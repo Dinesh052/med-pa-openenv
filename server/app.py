@@ -21,6 +21,11 @@ except ImportError:
 app = create_app(MedPAEnvironment, PAAction, PAObservation, env_name="med_pa")
 
 
+@app.get("/")
+def root():
+    return {"status": "ok", "env": "med_pa"}
+
+
 def main():
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
