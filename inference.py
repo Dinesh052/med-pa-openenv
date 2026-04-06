@@ -49,10 +49,11 @@ Valid denial reason codes: CONTRAINDICATION_ACTIVE, CRITERIA_NOT_MET, MEDICAL_NE
 
 Strategy:
 1. First, lookup the applicable guideline for the procedure/diagnosis
-2. Check if required documentation is present
-3. If docs are missing, request them
-4. Review all evidence against guideline criteria — look for buried contraindications
-5. Make your decision with a detailed rationale citing the guideline ID
+2. For drug/biologic requests: ALSO run check_formulary after lookup_guideline
+3. Check if required documentation is present
+4. If docs are missing, request them with request_info
+5. Review all evidence against guideline criteria — look for buried contraindications
+6. Make your decision with a detailed rationale citing the guideline ID
 
 IMPORTANT: Respond with ONLY a valid JSON object. No extra text, no markdown.
 """)
@@ -97,6 +98,11 @@ def build_user_prompt(obs: Any, step: int, history: List[str]) -> str:
         parts.append("\nPrevious actions:")
         for h in history[-5:]:
             parts.append(f"  {h}")
+    if hasattr(obs, 'available_actions') and obs.available_actions:
+        parts.append(f"\nAvailable actions: {', '.join(obs.available_actions)}")
+    steps_remaining = MAX_STEPS - step
+    if steps_remaining <= 1:
+        parts.append("\n⚠️ WARNING: Only 1 step remaining. You MUST make a terminal decision (approve/deny/request_info) NOW.")
     parts.append("\nRespond with ONE JSON action object:")
     return "\n".join(parts)
 
@@ -176,8 +182,8 @@ async def run_task(client: OpenAI, env: MedPAEnv, task_name: str) -> float:
             if done:
                 break
 
-        # Score = final reward from grader (0.0-1.0), not sum
-        score = max(0.0, min(1.0, rewards[-1])) if rewards else 0.0
+        # Score = best reward from grader (terminal action fires the grader)
+        score = max(0.0, min(1.0, max(rewards))) if rewards else 0.0
         success = score >= 0.3
 
     except Exception as e:
