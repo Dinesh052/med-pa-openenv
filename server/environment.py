@@ -1,6 +1,5 @@
 """Medical Prior Authorization OpenEnv Environment."""
 
-import re
 import sys
 import os
 from typing import Any, Optional
@@ -8,16 +7,12 @@ from uuid import uuid4
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-try:
-    from openenv.core.env_server.interfaces import Environment
-    from openenv.core.env_server.types import Action, Observation, State
-except ImportError:
-    from openenv.core.env_server.interfaces import Environment
-    from openenv.core.env_server.types import Action, Observation, State
-
+from openenv.core.env_server.interfaces import Environment
 from models import PAAction, PAObservation, PAState
 from tasks import TASKS, CLINICAL_GUIDELINES, FORMULARY, PATIENT_HISTORIES
+from grader import grade_task
 
+MAX_STEPS = 8
 TERMINAL_ACTIONS = {"approve", "deny", "request_info"}
 ALL_ACTIONS = ["approve", "deny", "request_info", "lookup_guideline", "check_formulary", "get_patient_history"]
 
@@ -27,188 +22,261 @@ class MedPAEnvironment(Environment):
     def __init__(self):
         self._state = PAState()
         self._task_data: dict = {}
-        self._ground_truth: dict = {}
-        self._actions_taken: list[tuple[str, str]] = []
-        self._guidelines_retrieved: list[dict] = []
-        self._info_requested: list[str] = []
-        self._formulary_checked: Optional[dict] = None
-        self._history_retrieved: Optional[dict] = None
+        self._task_id: str = ""
+        self._actions_taken: list[dict[str, Any]] = []
         self._done = False
-        self._reward = 0.0
+        self._guideline_result: Optional[str] = None
+        self._formulary_result: Optional[str] = None
+        self._patient_history_result: Optional[str] = None
+        self._info_request_result: Optional[str] = None
 
-    def reset(self, seed=None, episode_id=None, task_id=None, **kwargs) -> Observation:
+    def reset(self, seed=None, episode_id=None, task_id=None, **kwargs) -> PAObservation:
         tid = task_id or kwargs.get("task_id", "easy_knee_mri")
         if tid not in TASKS:
             tid = "easy_knee_mri"
 
+        self._task_id = tid
         self._task_data = TASKS[tid]
-        self._ground_truth = self._task_data["ground_truth"]
         self._actions_taken = []
-        self._guidelines_retrieved = []
-        self._info_requested = []
-        self._formulary_checked = None
-        self._history_retrieved = None
         self._done = False
-        self._reward = 0.0
+        self._guideline_result = None
+        self._formulary_result = None
+        self._patient_history_result = None
+        self._info_request_result = None
         self._state = PAState(
             episode_id=episode_id or str(uuid4()),
             step_count=0,
             task_id=tid,
             current_step=0,
-            max_steps=8,
+            max_steps=MAX_STEPS,
             actions_taken=[],
         )
 
         req = self._task_data["request"]
         return PAObservation(
-            request_id=req["request_id"], patient=req["patient"],
-            diagnosis=req["diagnosis"], procedure=req["procedure"],
+            request_id=req["request_id"],
+            patient=req["patient"],
+            diagnosis=req["diagnosis"],
+            procedure=req["procedure"],
             clinical_notes=req["clinical_notes"],
             prior_treatments=req["prior_treatments"],
             attachments=req["attachments"],
-            available_actions=ALL_ACTIONS, done=False, reward=0.0,
+            available_actions=ALL_ACTIONS,
+            message=f"PA request {req['request_id']} loaded. Review the case and make a decision.",
+            done=False,
+            reward=0.0,
         )
 
-    def step(self, action: Action, **kwargs) -> Observation:
+    def step(self, action, **kwargs) -> PAObservation:
         pa = action if isinstance(action, PAAction) else PAAction(**action.model_dump())
+
+        if self._done:
+            return PAObservation(message="Episode already finished.", done=True, reward=0.0)
 
         self._state.step_count += 1
         self._state.current_step += 1
         self._state.actions_taken.append(pa.action_type)
 
-        # Repeated action check
-        sig = (pa.action_type, str(sorted(pa.payload.items())) if pa.payload else "")
-        repeated = sig in self._actions_taken
-        self._actions_taken.append(sig)
-        penalty = -0.2 if repeated else 0.0
-
-        result_text = None
-        error_text = None
-
-        if pa.action_type == "lookup_guideline":
-            key = pa.payload.get("procedure") or pa.payload.get("diagnosis") or ""
-            matches = [
-                {"id": gid, **gdata}
-                for gid, gdata in CLINICAL_GUIDELINES.items()
-                if key in gdata.get("procedure_codes", []) or key in gdata.get("diagnosis_codes", [])
-            ]
-            if not matches and pa.payload.get("guideline_id"):
-                gid = pa.payload["guideline_id"]
-                if gid in CLINICAL_GUIDELINES:
-                    matches = [{"id": gid, **CLINICAL_GUIDELINES[gid]}]
-            self._guidelines_retrieved.extend(matches)
-            result_text = f"Found {len(matches)} guideline(s)." if matches else "No matching guidelines."
-
-        elif pa.action_type == "check_formulary":
-            drug = (pa.payload.get("drug") or pa.payload.get("drug_name") or "").lower()
-            entry = FORMULARY.get(drug)
-            self._formulary_checked = entry
-            result_text = f"Formulary: {entry}" if entry else f"No formulary entry for '{drug}'."
-
-        elif pa.action_type == "get_patient_history":
-            plan_id = self._task_data["request"]["patient"].get("plan_id", "")
-            self._history_retrieved = PATIENT_HISTORIES.get(plan_id)
-            result_text = f"History retrieved." if self._history_retrieved else "No history found."
-
-        elif pa.action_type == "request_info":
-            fields = pa.payload.get("fields", pa.payload.get("info_needed", []))
-            self._info_requested.extend(fields)
-            self._done = True
-            total, breakdown, feedback = self._calculate_reward(pa)
-            total += penalty
-            self._reward = max(0.0, min(1.0, total))
-            result_text = f"Requested info: {fields}. {feedback}"
-
-        elif pa.action_type in ("approve", "deny"):
-            self._done = True
-            total, breakdown, feedback = self._calculate_reward(pa)
-            total += penalty
-            self._reward = max(0.0, min(1.0, total))
-            result_text = f"Decision: {pa.action_type}. {feedback}"
-
-        else:
-            error_text = f"Unknown action: {pa.action_type}"
-
-        # Non-terminal penalty
-        if pa.action_type not in TERMINAL_ACTIONS and penalty:
-            self._reward = max(0.0, self._reward + penalty)
-
-        # Max steps
-        if self._state.current_step >= self._state.max_steps and not self._done:
-            self._done = True
-            self._reward = max(0.0, min(1.0, self._reward + 0.05))
-            result_text = (result_text or "") + " Max steps reached."
+        self._actions_taken.append({
+            "action_type": pa.action_type,
+            "payload": pa.payload,
+            "rationale": pa.rationale,
+            "step": self._state.current_step,
+        })
 
         req = self._task_data["request"]
+        step_num = self._state.current_step
+
+        handlers = {
+            "lookup_guideline": self._handle_lookup_guideline,
+            "check_formulary": self._handle_check_formulary,
+            "get_patient_history": self._handle_get_patient_history,
+            "request_info": self._handle_request_info,
+            "approve": self._handle_decision,
+            "deny": self._handle_decision,
+        }
+        handler = handlers.get(pa.action_type)
+        if handler is None:
+            return self._make_observation(req, f"Unknown action: {pa.action_type}", 0.0)
+
+        return handler(pa, req, step_num)
+
+    # ── Handlers ──────────────────────────────────────────
+
+    def _handle_lookup_guideline(self, action: PAAction, req: dict, step_num: int) -> PAObservation:
+        payload = action.payload
+        proc = payload.get("procedure", req["procedure"])
+        diag = payload.get("diagnosis", req["diagnosis"][0] if req["diagnosis"] else "")
+        gid = payload.get("guideline_id")
+
+        matches = []
+        for gl_id, gl in CLINICAL_GUIDELINES.items():
+            if gid and gl_id == gid:
+                matches.append((gl_id, gl))
+            elif proc in gl.get("procedure_codes", []) or diag in gl.get("diagnosis_codes", []):
+                matches.append((gl_id, gl))
+
+        if matches:
+            parts = []
+            for gl_id, gl in matches:
+                criteria = "\n".join(f"  - {c}" for c in gl["criteria"])
+                parts.append(f"Guideline {gl_id}: {gl['name']}\nCriteria:\n{criteria}")
+            self._guideline_result = "\n\n".join(parts)
+        else:
+            self._guideline_result = f"No guidelines found for procedure {proc} / diagnosis {diag}."
+
+        if step_num >= MAX_STEPS:
+            return self._force_end(req, "Step limit reached without a decision.")
+        return self._make_observation(req, "Guideline lookup complete.", 0.0)
+
+    def _handle_check_formulary(self, action: PAAction, req: dict, step_num: int) -> PAObservation:
+        drug = (action.payload.get("drug") or action.payload.get("drug_name") or "").lower()
+        entry = FORMULARY.get(drug)
+
+        if entry:
+            self._formulary_result = (
+                f"Drug: {drug}\nTier: {entry['tier']}\n"
+                f"Requires PA: {entry['requires_pa']}\n"
+                f"Step therapy required: {entry['step_therapy_required']}\n"
+                f"Alternatives: {', '.join(entry.get('alternatives', []))}"
+            )
+        else:
+            self._formulary_result = f"Drug '{drug}' not found in formulary."
+
+        if step_num >= MAX_STEPS:
+            return self._force_end(req, "Step limit reached without a decision.")
+        return self._make_observation(req, "Formulary check complete.", 0.0)
+
+    def _handle_get_patient_history(self, action: PAAction, req: dict, step_num: int) -> PAObservation:
+        plan_id = req["patient"].get("plan_id", "")
+        history = PATIENT_HISTORIES.get(plan_id)
+
+        if history:
+            auths = "\n".join(
+                f"  - {pa['request_id']}: {pa['procedure']} → {pa['decision']} ({pa['date']})"
+                for pa in history.get("prior_authorizations", [])
+            ) or "  None"
+            conditions = ", ".join(history.get("chronic_conditions", [])) or "None"
+            self._patient_history_result = f"Prior Authorizations:\n{auths}\nChronic Conditions: {conditions}"
+        else:
+            self._patient_history_result = "No patient history found."
+
+        if step_num >= MAX_STEPS:
+            return self._force_end(req, "Step limit reached without a decision.")
+        return self._make_observation(req, "Patient history retrieved.", 0.0)
+
+    def _handle_request_info(self, action: PAAction, req: dict, step_num: int) -> PAObservation:
+        fields = action.payload.get("fields", action.payload.get("info_needed", []))
+        if not fields:
+            return self._make_observation(req, "Error: request_info requires 'fields' in payload.", 0.0)
+
+        supplemental = self._task_data.get("supplemental_info", {})
+        results = []
+        for field in fields:
+            if field in supplemental:
+                results.append(f"[{field}]: {supplemental[field]}")
+            else:
+                results.append(f"[{field}]: Document not available.")
+        self._info_request_result = "\n\n".join(results)
+
+        # request_info is terminal
+        self._done = True
+        return self._grade_and_respond(action, req, f"Requested info: {fields}.")
+
+    def _handle_decision(self, action: PAAction, req: dict, step_num: int) -> PAObservation:
+        self._done = True
+        return self._grade_and_respond(action, req, f"Decision: {action.action_type}.")
+
+    # ── Helpers ───────────────────────────────────────────
+
+    def _grade_and_respond(self, action: PAAction, req: dict, msg_prefix: str) -> PAObservation:
+        gt = self._task_data["ground_truth"]
+        try:
+            result = grade_task(self._task_id, self._actions_taken, gt, MAX_STEPS)
+            score = max(0.0, min(1.0, result["score"]))
+            breakdown = result["breakdown"]
+            feedback = result["feedback"]
+        except (ValueError, KeyError):
+            score, breakdown, feedback = self._fallback_grade(action, gt)
+
         return PAObservation(
-            request_id=req["request_id"], patient=req["patient"],
-            diagnosis=req["diagnosis"], procedure=req["procedure"],
+            request_id=req["request_id"],
+            patient=req["patient"],
+            diagnosis=req["diagnosis"],
+            procedure=req["procedure"],
             clinical_notes=req["clinical_notes"],
             prior_treatments=req["prior_treatments"],
             attachments=req["attachments"],
-            guidelines_retrieved=self._guidelines_retrieved,
-            formulary_result=self._formulary_checked,
-            patient_history=self._history_retrieved,
-            last_action_result=result_text, last_action_error=error_text,
-            available_actions=ALL_ACTIONS, done=self._done, reward=self._reward,
+            guideline_result=self._guideline_result,
+            formulary_result=self._formulary_result,
+            patient_history_result=self._patient_history_result,
+            info_request_result=self._info_request_result,
+            available_actions=ALL_ACTIONS,
+            message=f"{msg_prefix} {feedback}",
+            reward_breakdown=breakdown,
+            done=True,
+            reward=score,
         )
 
-    def _calculate_reward(self, action: PAAction) -> tuple[float, dict, str]:
-        gt = self._ground_truth
+    def _fallback_grade(self, action: PAAction, gt: dict) -> tuple[float, dict, str]:
+        """Simple fallback grader for tasks not in the grader registry."""
         bd: dict[str, float] = {}
-        fb: list[str] = []
-
-        # Decision correctness (0.5)
-        if action.action_type == gt["decision"]:
-            if action.action_type == "deny" and gt.get("denial_reason_code"):
-                code = action.payload.get("reason_code", "")
-                if code == gt["denial_reason_code"]:
-                    bd["decision"] = 0.5
-                else:
-                    bd["decision"] = 0.3
-                    fb.append(f"Wrong reason code (expected {gt['denial_reason_code']}).")
-            elif action.action_type == "request_info":
-                required = set(gt.get("required_missing_fields", []))
-                found = required & set(self._info_requested)
-                bd["decision"] = 0.5 * (len(found) / len(required)) if required else 0.4
-                if found != required:
-                    fb.append(f"Missing fields: {required - found}")
-            else:
-                bd["decision"] = 0.5
-        else:
-            bd["decision"] = 0.0
-            fb.append(f"Wrong decision (expected {gt['decision']}).")
-
-        # Rationale quality (0.2) — exact string matching for guideline IDs
-        rationale = action.rationale or ""
-        req_gl = gt.get("required_criteria", [])
-        matched = sum(1 for g in req_gl if g in rationale)
-        bd["rationale"] = 0.2 * (matched / len(req_gl)) if req_gl else (0.1 if rationale else 0.0)
-
-        # Hallucination penalty — exact match against known guideline IDs
-        cited = re.findall(r"GL-[\w-]+", rationale)
-        for c in cited:
-            if c not in CLINICAL_GUIDELINES:
-                bd["rationale"] = max(0.0, bd["rationale"] - 0.3)
-                fb.append(f"Hallucinated guideline: {c}.")
-                break
-
-        # Info quality (0.2)
-        if gt["decision"] == "request_info":
-            required = set(gt.get("required_missing_fields", []))
-            found = required & set(self._info_requested)
-            bd["info"] = 0.2 * (len(found) / len(required)) if required else 0.2
-        else:
-            bd["info"] = 0.2 if not self._info_requested else max(0.0, 0.2 - 0.05 * len(self._info_requested))
-
-        # Efficiency (0.1)
-        steps = self._state.current_step
-        bd["efficiency"] = max(0.0, 0.1 * (1 - (steps - 1) / 7))
-
+        correct = action.action_type == gt["decision"]
+        bd["decision"] = 0.5 if correct else 0.0
+        bd["efficiency"] = max(0.0, 0.1 * (1 - (self._state.current_step - 1) / 7))
+        bd["rationale"] = 0.1 if action.rationale else 0.0
+        bd["info"] = 0.2 if any(a["action_type"] in ("lookup_guideline", "check_formulary", "get_patient_history") for a in self._actions_taken) else 0.0
         total = max(0.0, min(1.0, sum(bd.values())))
-        if not fb:
-            fb.append("Correct.")
-        return total, bd, " ".join(fb) + f" Score: {bd}"
+        fb = "Correct." if correct else f"Wrong decision (expected {gt['decision']})."
+        return total, bd, fb
+
+    def _force_end(self, req: dict, message: str) -> PAObservation:
+        self._done = True
+        gt = self._task_data["ground_truth"]
+        try:
+            result = grade_task(self._task_id, self._actions_taken, gt, MAX_STEPS)
+            score = max(0.0, min(1.0, result["score"]))
+            breakdown = result["breakdown"]
+        except (ValueError, KeyError):
+            score, breakdown = 0.05, {"timeout": 0.05}
+
+        return PAObservation(
+            request_id=req["request_id"],
+            patient=req["patient"],
+            diagnosis=req["diagnosis"],
+            procedure=req["procedure"],
+            clinical_notes=req["clinical_notes"],
+            prior_treatments=req["prior_treatments"],
+            attachments=req["attachments"],
+            guideline_result=self._guideline_result,
+            formulary_result=self._formulary_result,
+            patient_history_result=self._patient_history_result,
+            info_request_result=self._info_request_result,
+            available_actions=ALL_ACTIONS,
+            message=message,
+            reward_breakdown=breakdown,
+            done=True,
+            reward=score,
+        )
+
+    def _make_observation(self, req: dict, message: str, reward: float) -> PAObservation:
+        return PAObservation(
+            request_id=req["request_id"],
+            patient=req["patient"],
+            diagnosis=req["diagnosis"],
+            procedure=req["procedure"],
+            clinical_notes=req["clinical_notes"],
+            prior_treatments=req["prior_treatments"],
+            attachments=req["attachments"],
+            guideline_result=self._guideline_result,
+            formulary_result=self._formulary_result,
+            patient_history_result=self._patient_history_result,
+            info_request_result=self._info_request_result,
+            available_actions=ALL_ACTIONS,
+            message=message,
+            done=False,
+            reward=reward,
+        )
 
     @property
     def state(self) -> PAState:

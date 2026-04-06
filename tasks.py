@@ -1,51 +1,76 @@
-"""Medical Prior Authorization OpenEnv - Task scenarios and clinical guidelines."""
+"""Medical Prior Authorization OpenEnv - Task scenarios, clinical guidelines, and formulary."""
 
 CLINICAL_GUIDELINES = {
     "GL-KNEE-MRI-001": {
+        "id": "GL-KNEE-MRI-001",
+        "title": "MRI of the Knee for Suspected Ligament Injury",
         "name": "Knee MRI for ACL Injury",
-        "procedure_codes": ["73721"],
-        "diagnosis_codes": ["M23.611"],
+        "procedure_codes": ["73721", "73722"],
+        "diagnosis_codes": ["S83.511A", "S83.512A", "M23.611", "M23.612"],
         "criteria": [
             "documented_knee_instability OR positive_lachman_test",
-            "failed_conservative_treatment_4_plus_weeks",
+            "failed_conservative_treatment_4_plus_weeks OR acute_traumatic_injury",
         ],
+        "required_documents": ["clinical_notes", "physical_exam_report"],
         "auto_approve_if_criteria_met": True,
+        "step_therapy_required": False,
+        "notes": "Approval is straightforward when clinical exam documents ACL injury with positive Lachman test.",
     },
     "GL-BIOLOGIC-001": {
+        "id": "GL-BIOLOGIC-001",
+        "title": "Adalimumab (Humira) for Crohn's Disease",
         "name": "Biologic Therapy - Humira/Adalimumab for Crohn's Disease",
         "procedure_codes": ["J0135"],
-        "diagnosis_codes": ["K50.10"],
+        "diagnosis_codes": ["K50.00", "K50.10", "K50.80", "K50.90"],
         "criteria": [
             "documented_failure_of_2_plus_conventional_therapies",
             "conventional_therapies_include_corticosteroids_and_immunomodulators",
             "moderate_to_severe_disease_activity_CDAI_greater_than_220",
+            "no_active_untreated_infections_TB_screening_required",
         ],
+        "required_documents": ["clinical_notes", "prior_treatment_records", "tb_screening_results", "step_therapy_documentation"],
         "auto_approve_if_criteria_met": False,
+        "step_therapy_required": True,
+        "notes": "Requires documented failure of 2 conventional therapies before biologic approval.",
     },
     "GL-SPINE-FUSION-001": {
+        "id": "GL-SPINE-FUSION-001",
+        "title": "Lumbar Spinal Fusion for Degenerative Disc Disease",
         "name": "Spinal Fusion Surgery",
-        "procedure_codes": ["22612"],
-        "diagnosis_codes": ["M47.816", "M54.5"],
+        "procedure_codes": ["22612", "22630", "22633"],
+        "diagnosis_codes": ["M51.16", "M51.17", "M47.816", "M47.817", "M54.5"],
         "criteria": [
             "failed_conservative_treatment_6_plus_months",
             "documented_structural_instability_on_imaging",
-            "no_active_infection",
-            "BMI_less_than_40",
+            "psychological_evaluation_completed_if_chronic_pain_over_12_months",
+            "no_active_contraindications_uncontrolled_diabetes_HbA1c_over_8_active_smoking_BMI_over_40",
+            "concordant_findings_between_imaging_and_clinical_symptoms",
         ],
+        "required_documents": ["clinical_notes", "imaging_reports", "physical_therapy_records", "pain_management_records", "psychological_evaluation"],
         "auto_approve_if_criteria_met": False,
+        "step_therapy_required": True,
+        "notes": "Complex case. Multiple criteria must be met. Contraindications in clinical notes must be identified.",
     },
     "GL-SPINE-FUSION-002": {
+        "id": "GL-SPINE-FUSION-002",
+        "title": "Lumbar Spinal Fusion — Alternative Criteria (Network B)",
         "name": "Spinal Fusion - Alternative Criteria",
-        "procedure_codes": ["22612"],
-        "diagnosis_codes": ["M47.816", "M54.5"],
+        "procedure_codes": ["22612", "22630", "22633"],
+        "diagnosis_codes": ["M51.16", "M51.17", "M47.816", "M47.817", "M54.5"],
         "criteria": [
             "failed_conservative_treatment_3_plus_months",
             "neurological_deficit_present",
             "no_contraindication_to_general_anesthesia",
+            "BMI_less_than_35",
         ],
+        "required_documents": ["clinical_notes", "imaging_reports", "physical_therapy_records"],
         "auto_approve_if_criteria_met": False,
+        "step_therapy_required": False,
+        "notes": "Network B has shorter conservative treatment requirement but stricter BMI cutoff (35 vs 40).",
     },
     "GL-CHEST-XRAY-001": {
+        "id": "GL-CHEST-XRAY-001",
+        "title": "Chest X-Ray for Persistent Cough",
         "name": "Chest X-Ray for Persistent Cough",
         "procedure_codes": ["71046"],
         "diagnosis_codes": ["R05.9"],
@@ -53,9 +78,14 @@ CLINICAL_GUIDELINES = {
             "cough_persisting_greater_than_3_weeks",
             "failed_empiric_treatment",
         ],
+        "required_documents": ["clinical_notes", "medication_history"],
         "auto_approve_if_criteria_met": True,
+        "step_therapy_required": False,
+        "notes": "Simple approval when cough duration and failed empiric treatment are documented.",
     },
     "GL-PT-EVAL-001": {
+        "id": "GL-PT-EVAL-001",
+        "title": "Physical Therapy Evaluation - Shoulder",
         "name": "Physical Therapy Evaluation - Shoulder",
         "procedure_codes": ["97161"],
         "diagnosis_codes": ["M75.111"],
@@ -63,9 +93,14 @@ CLINICAL_GUIDELINES = {
             "documented_rotator_cuff_pathology",
             "pain_limiting_daily_activities",
         ],
+        "required_documents": ["clinical_notes", "mri_report", "orthopedic_referral"],
         "auto_approve_if_criteria_met": True,
+        "step_therapy_required": False,
+        "notes": "Clear approval with MRI-confirmed pathology and functional limitation.",
     },
     "GL-GLP1-001": {
+        "id": "GL-GLP1-001",
+        "title": "GLP-1 Agonist for Type 2 Diabetes with Obesity",
         "name": "GLP-1 Agonist for Type 2 Diabetes with Obesity",
         "procedure_codes": ["J3490"],
         "diagnosis_codes": ["E11.65", "E66.01"],
@@ -75,9 +110,14 @@ CLINICAL_GUIDELINES = {
             "documented_failure_of_metformin_or_contraindication",
             "HbA1c_greater_than_7",
         ],
+        "required_documents": ["clinical_notes", "endocrinology_notes", "dietitian_records", "lab_results"],
         "auto_approve_if_criteria_met": False,
+        "step_therapy_required": True,
+        "notes": "Requires complete lifestyle modification records and metformin trial/intolerance documentation.",
     },
     "GL-SLEEP-001": {
+        "id": "GL-SLEEP-001",
+        "title": "Polysomnography for Suspected OSA",
         "name": "Polysomnography for Suspected OSA",
         "procedure_codes": ["95810"],
         "diagnosis_codes": ["G47.33"],
@@ -86,9 +126,14 @@ CLINICAL_GUIDELINES = {
             "documented_snoring_or_witnessed_apneas",
             "failed_home_sleep_test_or_complex_comorbidities",
         ],
+        "required_documents": ["clinical_notes", "sleep_medicine_referral", "failed_hsat_report"],
         "auto_approve_if_criteria_met": False,
+        "step_therapy_required": False,
+        "notes": "Approve despite failed prior home test when valid clinical justification exists.",
     },
     "GL-CARDIAC-CATH-001": {
+        "id": "GL-CARDIAC-CATH-001",
+        "title": "Cardiac Catheterization for Acute Coronary Syndrome",
         "name": "Cardiac Catheterization for Acute Coronary Syndrome",
         "procedure_codes": ["93458"],
         "diagnosis_codes": ["I25.10", "I20.0"],
@@ -98,9 +143,14 @@ CLINICAL_GUIDELINES = {
             "no_active_bleeding",
             "eGFR_greater_than_30",
         ],
+        "required_documents": ["clinical_notes", "stress_test_report", "lab_results", "cardiology_notes"],
         "auto_approve_if_criteria_met": False,
+        "step_therapy_required": False,
+        "notes": "Must verify no active bleeding and adequate renal function before approval.",
     },
     "GL-CARDIAC-CATH-002": {
+        "id": "GL-CARDIAC-CATH-002",
+        "title": "Cardiac Catheterization - Elective Criteria",
         "name": "Cardiac Catheterization - Elective Criteria",
         "procedure_codes": ["93458"],
         "diagnosis_codes": ["I25.10"],
@@ -109,9 +159,14 @@ CLINICAL_GUIDELINES = {
             "failed_optimal_medical_therapy_3_months",
             "LVEF_assessment_completed",
         ],
+        "required_documents": ["clinical_notes", "stress_test_report", "echocardiogram_report"],
         "auto_approve_if_criteria_met": False,
+        "step_therapy_required": False,
+        "notes": "Elective pathway requires documented ischemia and failed optimal medical therapy.",
     },
     "GL-GENE-THERAPY-001": {
+        "id": "GL-GENE-THERAPY-001",
+        "title": "Gene Therapy - Zolgensma for SMA",
         "name": "Gene Therapy - Zolgensma for SMA",
         "procedure_codes": ["J3399"],
         "diagnosis_codes": ["G12.0", "G12.1"],
@@ -122,30 +177,62 @@ CLINICAL_GUIDELINES = {
             "anti_AAV9_antibody_titer_below_threshold",
             "no_active_hepatic_disease",
         ],
+        "required_documents": ["clinical_notes", "genetic_testing_report", "hepatology_consult", "aav9_antibody_results", "pulmonary_function"],
         "auto_approve_if_criteria_met": False,
+        "step_therapy_required": False,
+        "notes": "High-stakes $2.1M gene therapy. Must verify hepatic function and AAV9 antibody titer.",
     },
 }
 
+
 FORMULARY = {
     "adalimumab": {
-        "tier": "specialty",
+        "brand_name": "Humira",
+        "generic_name": "adalimumab",
+        "tier": 4,
         "requires_pa": True,
-        "step_therapy_required": True,
+        "step_therapy": ["mesalamine", "azathioprine"],
+        "status": "covered_with_pa",
         "alternatives": ["infliximab", "vedolizumab"],
     },
-    "semaglutide": {
-        "tier": "specialty",
+    "infliximab": {
+        "brand_name": "Remicade",
+        "generic_name": "infliximab",
+        "tier": 4,
         "requires_pa": True,
-        "step_therapy_required": True,
+        "step_therapy": ["mesalamine", "azathioprine"],
+        "status": "covered_with_pa",
+        "alternatives": ["adalimumab", "vedolizumab"],
+    },
+    "mesalamine": {
+        "brand_name": "Asacol",
+        "generic_name": "mesalamine",
+        "tier": 2,
+        "requires_pa": False,
+        "step_therapy": [],
+        "status": "covered",
+        "alternatives": [],
+    },
+    "semaglutide": {
+        "brand_name": "Ozempic",
+        "generic_name": "semaglutide",
+        "tier": 4,
+        "requires_pa": True,
+        "step_therapy": ["metformin", "glipizide"],
+        "status": "covered_with_pa",
         "alternatives": ["liraglutide", "tirzepatide"],
     },
     "onasemnogene": {
-        "tier": "specialty",
+        "brand_name": "Zolgensma",
+        "generic_name": "onasemnogene abeparvovec",
+        "tier": 5,
         "requires_pa": True,
-        "step_therapy_required": False,
+        "step_therapy": [],
+        "status": "covered_with_pa",
         "alternatives": ["nusinersen", "risdiplam"],
     },
 }
+
 
 TASKS = {
     # ── EASY ──────────────────────────────────────────────
@@ -177,6 +264,17 @@ TASKS = {
             "required_criteria": ["GL-KNEE-MRI-001"],
             "required_missing_fields": [],
             "denial_reason_code": None,
+            "key_findings": [
+                "positive Lachman test",
+                "ACL disruption",
+                "completed 6 weeks PT with persistent instability",
+            ],
+        },
+        "patient_history": {
+            "history": "No prior orthopedic PA requests. Hypertension managed medically.",
+            "prior_auths": [
+                {"request_id": "PA-2023-044", "procedure": "99213", "decision": "approve", "date": "2023-08-15"},
+            ],
         },
     },
     "easy_chest_xray": {
@@ -205,6 +303,15 @@ TASKS = {
             "required_criteria": ["GL-CHEST-XRAY-001"],
             "required_missing_fields": [],
             "denial_reason_code": None,
+            "key_findings": [
+                "cough persisting 5 weeks (>3 week threshold)",
+                "failed empiric antibiotics",
+                "failed inhaled corticosteroids",
+            ],
+        },
+        "patient_history": {
+            "history": "No prior PA requests. Chronic conditions: hypertension, osteoarthritis.",
+            "prior_auths": [],
         },
     },
     "easy_pt_eval": {
@@ -232,6 +339,17 @@ TASKS = {
             "required_criteria": ["GL-PT-EVAL-001"],
             "required_missing_fields": [],
             "denial_reason_code": None,
+            "key_findings": [
+                "MRI-confirmed partial-thickness supraspinatus tear",
+                "functional limitation in daily activities",
+                "positive Neer and Hawkins impingement signs",
+            ],
+        },
+        "patient_history": {
+            "history": "Prior shoulder MRI approved. Chronic conditions: rotator cuff tear, hypertension.",
+            "prior_auths": [
+                {"request_id": "PA-2023-200", "procedure": "73221", "decision": "approve", "date": "2023-11-01"},
+            ],
         },
     },
     # ── MEDIUM ────────────────────────────────────────────
@@ -266,6 +384,43 @@ TASKS = {
                 "prior_biologic_records",
             ],
             "denial_reason_code": None,
+            "key_findings": [
+                "mesalamine failed (8 months inadequate response)",
+                "prednisone dependent (flares below 15mg)",
+                "CDAI 285 — moderate-to-severe",
+                "step therapy documentation missing",
+                "prior biologic records not obtained",
+            ],
+            "post_info_decision": "approve",
+            "post_info_rationale": (
+                "After receiving step therapy documentation confirming prior conventional therapy "
+                "failures and biologic records from outside facility, criteria GL-BIOLOGIC-001 "
+                "are met. Approve."
+            ),
+        },
+        "patient_history": {
+            "history": (
+                "Diagnosed with Crohn's disease 3 years ago. Multiple ER visits for flares. "
+                "Failed mesalamine, prednisone-dependent. Prior biologic trial at outside facility — records pending."
+            ),
+            "prior_auths": [
+                {"request_id": "PA-2023-112", "procedure": "43239", "decision": "approve", "date": "2023-05-20"},
+                {"request_id": "PA-2024-001", "procedure": "J0135", "decision": "pending", "date": "2024-01-10"},
+            ],
+        },
+        "supplemental_info": {
+            "step_therapy_documentation": (
+                "Step therapy documentation received: "
+                "1) Mesalamine 4.8g/day for 8 months — documented inadequate response (CDAI remained >280). "
+                "2) Azathioprine 150mg/day for 6 weeks — discontinued due to severe leukopenia (WBC 2.1). "
+                "Per policy, adverse event requiring discontinuation qualifies as therapeutic failure. "
+                "Two conventional therapy failures confirmed."
+            ),
+            "prior_biologic_records": (
+                "Prior treatment records from outside facility confirm: infliximab trial from "
+                "January 2023 to April 2023, discontinued due to infusion reactions. "
+                "Documented in electronic medical records with provider attestation."
+            ),
         },
     },
     "medium_ozempic": {
@@ -299,6 +454,45 @@ TASKS = {
                 "metformin_intolerance_documentation",
             ],
             "denial_reason_code": None,
+            "key_findings": [
+                "BMI 36.2 meets threshold",
+                "HbA1c 8.4% > 7% threshold",
+                "metformin discontinued for GI intolerance — documentation incomplete",
+                "lifestyle modification records months 1-4 missing",
+                "glipizide trial showed partial response",
+            ],
+            "post_info_decision": "approve",
+            "post_info_rationale": (
+                "After receiving complete dietitian records and metformin intolerance documentation, "
+                "all GL-GLP1-001 criteria are met. BMI >30, HbA1c >7, documented lifestyle modification "
+                "failure, and documented metformin intolerance. Approve."
+            ),
+        },
+        "patient_history": {
+            "history": (
+                "T2DM diagnosed 2 years ago. Morbid obesity (BMI 36.2). "
+                "Failed metformin (GI intolerance), partial response to glipizide. "
+                "Hypertension and hyperlipidemia managed medically."
+            ),
+            "prior_auths": [
+                {"request_id": "PA-2023-044", "procedure": "99213", "decision": "approve", "date": "2023-08-15"},
+            ],
+        },
+        "supplemental_info": {
+            "complete_lifestyle_modification_records": (
+                "Dietitian records received covering full 8-month program: "
+                "Months 1-4 (previous provider): structured 1500-calorie diet with weekly weigh-ins. "
+                "Patient lost 4 lbs in 4 months — inadequate response. "
+                "Months 5-8 (current provider): continued diet program with exercise regimen added. "
+                "Total weight loss 6 lbs over 8 months. HbA1c unchanged. Lifestyle modification failure documented."
+            ),
+            "metformin_intolerance_documentation": (
+                "Metformin intolerance documentation: Patient started metformin 500mg BID, titrated to 1000mg BID. "
+                "Developed persistent diarrhea (6-8 episodes/day) and nausea within 2 weeks of full dose. "
+                "Extended-release formulation attempted — symptoms persisted. "
+                "Discontinued after 3 months per gastroenterology recommendation. "
+                "Documented as true intolerance, not non-compliance."
+            ),
         },
     },
     "medium_sleep_study": {
@@ -328,6 +522,21 @@ TASKS = {
             "required_criteria": ["GL-SLEEP-001"],
             "required_missing_fields": [],
             "denial_reason_code": None,
+            "key_findings": [
+                "ESS score 15 (>10 threshold)",
+                "witnessed apneic episodes",
+                "failed home sleep test (technically inadequate)",
+                "complex comorbidities (AFib, COPD) justify in-lab study",
+            ],
+        },
+        "patient_history": {
+            "history": (
+                "Atrial fibrillation on anticoagulation. Moderate COPD on tiotropium. "
+                "Failed home sleep apnea test. No prior sleep-related PA requests."
+            ),
+            "prior_auths": [
+                {"request_id": "PA-2023-112", "procedure": "43239", "decision": "approve", "date": "2023-05-20"},
+            ],
         },
     },
     # ── HARD ──────────────────────────────────────────────
@@ -353,11 +562,17 @@ TASKS = {
                 "confirmed on flexion-extension radiographs showing 4mm of translation. "
                 "Neurology consultation confirms bilateral L5 radiculopathy with diminished "
                 "ankle reflexes and mild foot drop on the left. EMG/NCS studies corroborate "
-                "active L5 nerve root compromise bilaterally. Patient was recently treated for "
-                "MRSA wound infection, completed IV vancomycin course 2 weeks ago, wound "
-                "cultures pending final clearance. The patient's current BMI is 38, and he has "
-                "been counseled on weight management with a target of BMI below 35 prior to "
-                "elective surgery.\n\n"
+                "active L5 nerve root compromise bilaterally.\n\n"
+                "Comorbidities: Type 2 diabetes mellitus — last HbA1c 8.4% (drawn 2024-03-01), "
+                "up from 7.9% six months ago. Patient reports difficulty with medication "
+                "compliance. Endocrinologist consulted but no formal glycemic optimization plan "
+                "documented. The patient's current BMI is 38, and he has been counseled on "
+                "weight management with a target of BMI below 35 prior to elective surgery.\n\n"
+                "Additional note from primary care (2024-03-05): Patient's diabetes remains "
+                "suboptimally controlled. Recommended referral to diabetes education program. "
+                "HbA1c target for surgical clearance per institutional protocol is <8.0%. "
+                "Current level of 8.4% represents a surgical risk factor. Primary care did not "
+                "provide surgical clearance pending glycemic improvement.\n\n"
                 "Given the failure of prolonged conservative measures, documented structural "
                 "instability, and progressive neurological deficits, the treating spine surgeon "
                 "recommends L4-L5 posterior lumbar interbody fusion with pedicle screw "
@@ -365,27 +580,66 @@ TASKS = {
                 "patient meets criteria for intervention. Pre-operative cardiac clearance has "
                 "been obtained. Anesthesiology has evaluated the patient and notes no "
                 "contraindication to general anesthesia aside from standard obesity-related "
-                "precautions. The procedure is planned as an inpatient surgery with an "
-                "anticipated three-to-four day hospital stay."
+                "precautions. Pain management program completed December 2023. Psychological "
+                "evaluation completed 2024-02-20 — patient cleared for surgery. The procedure "
+                "is planned as an inpatient surgery with an anticipated three-to-four day "
+                "hospital stay."
             ),
             "prior_treatments": [
                 "physical_therapy_8_months",
                 "epidural_injections_x3",
                 "nsaid_therapy",
                 "gabapentin",
+                "pain_management_program",
             ],
             "attachments": [
                 "spine_imaging",
                 "neurology_consult",
                 "pain_management_records",
+                "psychological_evaluation",
             ],
         },
         "ground_truth": {
             "decision": "deny",
             "required_criteria": ["GL-SPINE-FUSION-001", "GL-SPINE-FUSION-002"],
             "required_missing_fields": [],
-            "denial_reason_code": "CONTRAINDICATION_ACTIVE_INFECTION",
-            "contraindication": "active_infection_mrsa",
+            "denial_reason_code": "CONTRAINDICATION_ACTIVE",
+            "contraindication": {
+                "type": "uncontrolled_diabetes",
+                "detail": "HbA1c 8.4% > 8.0% threshold",
+                "location_hint": "buried in comorbidities paragraph and primary care note",
+            },
+            "key_findings": [
+                "HbA1c 8.4% exceeds 8.0% threshold — uncontrolled diabetes",
+                "primary care did not provide surgical clearance",
+                "GL-SPINE-FUSION-001 requires no uncontrolled diabetes (HbA1c <= 8.0)",
+                "GL-SPINE-FUSION-002 has stricter BMI cutoff (35) — patient BMI 38 fails",
+                "conservative treatment met (8 months PT + pain management)",
+                "psychological evaluation completed",
+                "imaging concordant with symptoms",
+            ],
+            "alternative_denial_codes": [
+                "CRITERIA_NOT_MET",
+                "MEDICAL_NECESSITY_NOT_ESTABLISHED",
+                "SAFETY_CONCERN",
+            ],
+            "conflicting_guideline": {
+                "primary": "GL-SPINE-FUSION-001",
+                "secondary": "GL-SPINE-FUSION-002",
+                "conflict": "GL-SPINE-FUSION-001 allows BMI<40 but requires HbA1c<=8.0; GL-SPINE-FUSION-002 requires BMI<35 but shorter conservative treatment. Patient fails both.",
+            },
+        },
+        "patient_history": {
+            "history": (
+                "Chronic low back pain 5+ years. Multiple conservative treatment attempts. "
+                "Type 2 diabetes since 2018, historically borderline controlled. "
+                "Three prior epidural injection PAs approved. No prior spinal surgeries."
+            ),
+            "prior_auths": [
+                {"request_id": "PA-2023-078", "procedure": "62322", "decision": "approve", "date": "2023-03-10"},
+                {"request_id": "PA-2023-091", "procedure": "62322", "decision": "approve", "date": "2023-06-22"},
+                {"request_id": "PA-2023-105", "procedure": "62322", "decision": "approve", "date": "2023-09-04"},
+            ],
         },
     },
     "hard_cardiac_cath": {
@@ -433,6 +687,30 @@ TASKS = {
             "required_missing_fields": [],
             "denial_reason_code": "CONTRAINDICATION_ACTIVE_BLEEDING_AND_RENAL",
             "contraindication": "recent_gi_bleed_and_eGFR_below_30",
+            "key_findings": [
+                "eGFR 22 mL/min — below 30 threshold (stage 4 CKD)",
+                "recent GI bleed 2 weeks ago requiring transfusion",
+                "aspirin restarted only 5 days ago after GI bleed",
+                "positive stress test with 18% ischemic myocardium",
+                "LVEF 44-45% with anterior wall hypokinesis",
+                "GL-CARDIAC-CATH-001 requires no active bleeding AND eGFR >30",
+            ],
+            "alternative_denial_codes": [
+                "SAFETY_CONCERN",
+                "CONTRAINDICATION_RENAL",
+                "CONTRAINDICATION_BLEEDING_RISK",
+            ],
+        },
+        "patient_history": {
+            "history": (
+                "Known CAD with chronic stable angina. Stage 4 CKD followed by nephrology. "
+                "Recent GI bleed from duodenal ulcer. Three prior epidural injection PAs."
+            ),
+            "prior_auths": [
+                {"request_id": "PA-2023-078", "procedure": "62322", "decision": "approve", "date": "2023-03-10"},
+                {"request_id": "PA-2023-091", "procedure": "62322", "decision": "approve", "date": "2023-06-22"},
+                {"request_id": "PA-2023-105", "procedure": "62322", "decision": "approve", "date": "2023-09-04"},
+            ],
         },
     },
     "hard_gene_therapy": {
@@ -485,6 +763,29 @@ TASKS = {
             "required_missing_fields": [],
             "denial_reason_code": "CONTRAINDICATION_HEPATIC_DISEASE",
             "contraindication": "elevated_transaminases_active_hepatic_concern",
+            "key_findings": [
+                "ALT 85 U/L (normal <45) — nearly 2x upper limit",
+                "AST 72 U/L — elevated",
+                "GL-GENE-THERAPY-001 requires no active hepatic disease",
+                "hepatology notes transaminase elevation, recommends monitoring",
+                "anti-AAV9 titer 1:25 qualifies (<1:50 threshold)",
+                "age 14 months — within 2-year cutoff",
+                "SMN1 deletion confirmed",
+            ],
+            "alternative_denial_codes": [
+                "SAFETY_CONCERN",
+                "CONTRAINDICATION_HEPATOTOXICITY_RISK",
+            ],
+        },
+        "patient_history": {
+            "history": (
+                "SMA type 2 diagnosed at 8 months. On nusinersen since 9 months (5 doses). "
+                "Modest motor improvement. Nighttime BiPAP prophylactic."
+            ),
+            "prior_auths": [
+                {"request_id": "PA-2024-050", "procedure": "J2326", "decision": "approve", "date": "2024-02-15"},
+                {"request_id": "PA-2024-051", "procedure": "J2326", "decision": "approve", "date": "2024-03-01"},
+            ],
         },
     },
 }
@@ -509,7 +810,7 @@ PATIENT_HISTORIES = {
             {"request_id": "PA-2023-091", "procedure": "62322", "decision": "approve", "date": "2023-06-22"},
             {"request_id": "PA-2023-105", "procedure": "62322", "decision": "approve", "date": "2023-09-04"},
         ],
-        "chronic_conditions": ["lumbar_spondylosis", "chronic_low_back_pain", "hypertension", "obesity"],
+        "chronic_conditions": ["lumbar_spondylosis", "chronic_low_back_pain", "hypertension", "obesity", "type_2_diabetes"],
     },
     "HMO-100": {
         "prior_authorizations": [],

@@ -12,7 +12,7 @@ import json
 import os
 import re
 import textwrap
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from openai import OpenAI
 
@@ -26,54 +26,44 @@ MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:8000")
 BENCHMARK = "med_pa"
 MAX_STEPS = 8
+
 TASKS = [
-    "easy_knee_mri", "medium_humira", "hard_spinal_fusion",
-    "easy_chest_xray", "easy_pt_eval", "medium_ozempic",
-    "medium_sleep_study", "hard_cardiac_cath", "hard_gene_therapy",
+    "easy_knee_mri", "easy_chest_xray", "easy_pt_eval",
+    "medium_humira", "medium_ozempic", "medium_sleep_study",
+    "hard_spinal_fusion", "hard_cardiac_cath", "hard_gene_therapy",
 ]
 
-SYSTEM_PROMPT = textwrap.dedent("""
-You are a medical prior authorization (PA) reviewer. Evaluate PA requests by gathering clinical guidelines, reviewing patient data, and making approve/deny/request_info decisions.
+SYSTEM_PROMPT = textwrap.dedent("""\
+You are an insurance prior authorization reviewer AI. You review medical procedure
+requests against clinical guidelines and make coverage decisions.
 
-Available actions (respond with ONLY valid JSON, no other text):
+Available actions (respond with EXACTLY ONE JSON object per turn):
+1. {"action_type": "lookup_guideline", "payload": {"procedure": "<CPT>", "diagnosis": "<ICD-10>"}, "rationale": null}
+2. {"action_type": "get_patient_history", "payload": {}, "rationale": null}
+3. {"action_type": "check_formulary", "payload": {"drug": "<drug_name>"}, "rationale": null}
+4. {"action_type": "request_info", "payload": {"fields": ["field1", "field2"]}, "rationale": "reason for request"}
+5. {"action_type": "approve", "payload": {}, "rationale": "detailed rationale citing guideline ID and criteria met"}
+6. {"action_type": "deny", "payload": {"reason_code": "CODE"}, "rationale": "detailed rationale citing guideline ID and unmet criteria"}
 
-1. lookup_guideline - Look up clinical guidelines by procedure or diagnosis code.
-   {"action_type": "lookup_guideline", "payload": {"procedure": "<CPT code>"}, "rationale": "Looking up guidelines."}
-
-2. check_formulary - Check drug formulary status.
-   {"action_type": "check_formulary", "payload": {"drug": "<drug_name>"}, "rationale": "Checking formulary."}
-
-3. get_patient_history - Retrieve patient history.
-   {"action_type": "get_patient_history", "payload": {}, "rationale": "Retrieving history."}
-
-4. approve - Approve the PA request (terminal).
-   {"action_type": "approve", "payload": {}, "rationale": "Per GL-XXX: <rationale citing guideline IDs>"}
-
-5. deny - Deny the PA request (terminal).
-   {"action_type": "deny", "payload": {"reason_code": "<CODE>"}, "rationale": "Per GL-XXX: <rationale>"}
-
-6. request_info - Request missing documentation (terminal).
-   {"action_type": "request_info", "payload": {"fields": ["field1", "field2"]}, "rationale": "Per GL-XXX: <rationale>"}
+Valid denial reason codes: CONTRAINDICATION_ACTIVE, CRITERIA_NOT_MET, MEDICAL_NECESSITY_NOT_ESTABLISHED, SAFETY_CONCERN, STEP_THERAPY_NOT_COMPLETED
 
 Strategy:
-1. FIRST lookup_guideline with the procedure code.
-2. Analyze patient data and clinical notes against guideline criteria.
-3. Look for contraindications, missing docs, or unmet criteria.
-4. If docs missing, request_info. If contraindication, deny with reason_code. If criteria met, approve.
-5. ALWAYS cite guideline IDs (GL-KNEE-MRI-001, GL-BIOLOGIC-001, etc.) in rationale.
+1. First, lookup the applicable guideline for the procedure/diagnosis
+2. Check if required documentation is present
+3. If docs are missing, request them
+4. Review all evidence against guideline criteria — look for buried contraindications
+5. Make your decision with a detailed rationale citing the guideline ID
 
-Respond with ONLY a single JSON object.
-""").strip()
+IMPORTANT: Respond with ONLY a valid JSON object. No extra text, no markdown.
+""")
 
 
-def log_start(task: str, env: str, model: str) -> None:
-    print(f"[START] task={task} env={env} model={model}", flush=True)
+def log_start(task: str) -> None:
+    print(f"[START] task={task} env={BENCHMARK} model={MODEL_NAME}", flush=True)
 
 
 def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
-    error_val = error if error else "null"
-    done_val = str(done).lower()
-    print(f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}", flush=True)
+    print(f"[STEP] step={step} action={action} reward={reward:.2f} done={str(done).lower()} error={error or 'null'}", flush=True)
 
 
 def log_end(success: bool, steps: int, rewards: List[float]) -> None:
@@ -81,17 +71,45 @@ def log_end(success: bool, steps: int, rewards: List[float]) -> None:
     print(f"[END] success={str(success).lower()} steps={steps} rewards={rewards_str}", flush=True)
 
 
-def parse_action(text: str) -> dict:
+def build_user_prompt(obs: Any, step: int, history: List[str]) -> str:
+    """Structure observation data into a clear prompt for the LLM."""
+    patient = obs.patient or {}
+    parts = [
+        f"=== PA Review Case: {obs.request_id} (Step {step}/{MAX_STEPS}) ===",
+        f"Patient: {patient.get('age', '?')}yo {patient.get('sex', '?')}, Plan: {patient.get('insurance_plan', '?')}",
+        f"Diagnosis (ICD-10): {', '.join(obs.diagnosis) if obs.diagnosis else 'N/A'}",
+        f"Procedure (CPT): {obs.procedure}",
+        f"\nClinical Notes:\n{obs.clinical_notes}",
+        f"\nPrior Treatments: {'; '.join(obs.prior_treatments) if obs.prior_treatments else 'None'}",
+        f"Attached Documents: {', '.join(obs.attachments) if obs.attachments else 'None'}",
+    ]
+    if obs.guideline_result:
+        parts.append(f"\n--- Guideline Lookup Result ---\n{obs.guideline_result}")
+    if obs.formulary_result:
+        parts.append(f"\n--- Formulary Check Result ---\n{obs.formulary_result}")
+    if obs.patient_history_result:
+        parts.append(f"\n--- Patient History ---\n{obs.patient_history_result}")
+    if obs.info_request_result:
+        parts.append(f"\n--- Requested Information ---\n{obs.info_request_result}")
+    if obs.message:
+        parts.append(f"\nStatus: {obs.message}")
+    if history:
+        parts.append("\nPrevious actions:")
+        for h in history[-5:]:
+            parts.append(f"  {h}")
+    parts.append("\nRespond with ONE JSON action object:")
+    return "\n".join(parts)
+
+
+def parse_action(text: str) -> Dict[str, Any]:
+    """Extract JSON action from model response."""
+    text = text.strip()
+    text = re.sub(r"```(?:json)?\s*", "", text)
+    text = re.sub(r"```\s*$", "", text).strip()
     try:
         return json.loads(text)
     except json.JSONDecodeError:
         pass
-    m = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
-    if m:
-        try:
-            return json.loads(m.group(1))
-        except json.JSONDecodeError:
-            pass
     m = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', text, re.DOTALL)
     if m:
         try:
@@ -101,47 +119,43 @@ def parse_action(text: str) -> dict:
     return {"action_type": "lookup_guideline", "payload": {"procedure": "unknown"}, "rationale": "fallback"}
 
 
-def get_llm_action(client: OpenAI, messages: list) -> str:
-    try:
-        completion = client.chat.completions.create(
+async def llm_call(client: OpenAI, messages: list) -> str:
+    """Make an LLM call with a 30s timeout."""
+    def _call():
+        resp = client.chat.completions.create(
             model=MODEL_NAME, messages=messages,
-            temperature=0.2, max_tokens=512, stream=False,
+            temperature=0.3, max_tokens=1024, stream=False,
         )
-        return (completion.choices[0].message.content or "").strip()
+        return (resp.choices[0].message.content or "").strip()
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(_call), timeout=30)
     except Exception as exc:
-        print(f"[DEBUG] Model request failed: {exc}", flush=True)
+        print(f"[DEBUG] LLM call failed: {exc}", flush=True)
         return '{"action_type": "lookup_guideline", "payload": {"procedure": "unknown"}, "rationale": "fallback"}'
 
 
-async def run_task(llm: OpenAI, env: MedPAEnv, task_name: str) -> float:
+async def run_task(client: OpenAI, env: MedPAEnv, task_name: str) -> float:
+    """Run a single task with 90s timeout. Returns final grader score (0.0-1.0)."""
     rewards: List[float] = []
+    history: List[str] = []
     steps_taken = 0
     success = False
 
-    log_start(task=task_name, env=BENCHMARK, model=MODEL_NAME)
-
+    log_start(task_name)
     try:
         result = await env.reset(task_id=task_name)
         obs = result.observation
-
-        obs_summary = json.dumps({
-            "request_id": obs.request_id, "patient": obs.patient,
-            "diagnosis": obs.diagnosis, "procedure": obs.procedure,
-            "clinical_notes": obs.clinical_notes,
-            "prior_treatments": obs.prior_treatments,
-            "attachments": obs.attachments,
-        }, indent=2)
-
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": f"Review this PA request:\n{obs_summary}\n\nStart by looking up the relevant clinical guideline using the procedure code."},
-        ]
 
         for step in range(1, MAX_STEPS + 1):
             if result.done:
                 break
 
-            llm_text = get_llm_action(llm, messages)
+            prompt = build_user_prompt(obs, step, history)
+            messages = [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ]
+            llm_text = await llm_call(client, messages)
             action_dict = parse_action(llm_text)
             action_type = action_dict.get("action_type", "unknown")
 
@@ -157,36 +171,36 @@ async def run_task(llm: OpenAI, env: MedPAEnv, task_name: str) -> float:
             steps_taken = step
 
             log_step(step=step, action=action_type, reward=reward, done=done, error=error)
-
-            messages.append({"role": "assistant", "content": llm_text})
+            history.append(f"Step {step}: {action_type} -> reward={reward:.2f}")
 
             if done:
                 break
 
-            next_msg = f"Result: {obs.last_action_result}"
-            if obs.guidelines_retrieved:
-                next_msg += f"\nGuidelines: {json.dumps(obs.guidelines_retrieved)}"
-            if obs.formulary_result:
-                next_msg += f"\nFormulary: {json.dumps(obs.formulary_result)}"
-            if obs.patient_history:
-                next_msg += f"\nPatient history: {json.dumps(obs.patient_history)}"
-            next_msg += "\n\nContinue your review. Respond with JSON only."
-            messages.append({"role": "user", "content": next_msg})
-
-        # Sum rewards across trajectory, not just last
-        score = max(0.0, min(1.0, sum(rewards)))
-        success = score > 0 and result.done
+        # Score = final reward from grader (0.0-1.0), not sum
+        score = max(0.0, min(1.0, rewards[-1])) if rewards else 0.0
+        success = score >= 0.3
 
     except Exception as e:
         print(f"[DEBUG] Task error: {e}", flush=True)
+        score = 0.0
     finally:
         log_end(success=success, steps=steps_taken, rewards=rewards)
 
-    return sum(rewards)
+    return score
+
+
+async def run_task_with_timeout(client: OpenAI, env: MedPAEnv, task_name: str) -> float:
+    """Wrap run_task with a 90s timeout."""
+    try:
+        return await asyncio.wait_for(run_task(client, env, task_name), timeout=90)
+    except asyncio.TimeoutError:
+        print(f"[DEBUG] Task {task_name} timed out (90s)", flush=True)
+        log_end(success=False, steps=0, rewards=[])
+        return 0.0
 
 
 async def main() -> None:
-    llm = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
+    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
 
     if LOCAL_IMAGE_NAME:
         env = await MedPAEnv.from_docker_image(LOCAL_IMAGE_NAME)
@@ -197,7 +211,7 @@ async def main() -> None:
     try:
         scores = []
         for task in TASKS:
-            s = await run_task(llm, env, task)
+            s = await run_task_with_timeout(client, env, task)
             scores.append(s)
         avg = sum(scores) / len(scores) if scores else 0.0
         print(f"\n[SUMMARY] avg_score={avg:.3f} scores={','.join(f'{s:.3f}' for s in scores)}", flush=True)
