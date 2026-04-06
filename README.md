@@ -61,9 +61,15 @@ Terminal actions: `approve`, `deny`, `request_info`. Information-gathering actio
 
 | Task | Difficulty | Scenario | Key Challenge |
 |---|---|---|---|
-| `easy_knee_mri` | Easy | Knee MRI for ACL injury — positive Lachman test, 6 weeks PT completed | Straightforward approval with clear clinical criteria met |
-| `medium_humira` | Medium | Humira (adalimumab) for Crohn's disease — CDAI 285, vague biologic mention | Missing step-therapy documentation; agent must request info |
-| `hard_spinal_fusion` | Hard | Spinal fusion surgery — BMI 38, buried MRSA infection, conflicting guidelines | Buried contraindication (active infection) + conflicting clinical guidelines |
+| `easy_knee_mri` | Easy | Knee MRI for ACL injury — positive Lachman test, 6 weeks PT | Straightforward approval with clear criteria met |
+| `easy_chest_xray` | Easy | Chest X-ray for persistent cough — 5 weeks, failed empiric treatment | Simple approval, all criteria documented |
+| `easy_pt_eval` | Easy | PT evaluation for rotator cuff tear — MRI-confirmed, functional limitation | Clear approval with documented pathology |
+| `medium_humira` | Medium | Humira for Crohn's disease — CDAI 285, vague biologic mention | Missing step-therapy documentation; must request info |
+| `medium_ozempic` | Medium | Semaglutide for T2DM+obesity — metformin intolerance, incomplete records | Missing lifestyle modification records and intolerance documentation |
+| `medium_sleep_study` | Medium | In-lab polysomnography — failed home test, complex comorbidities | Approve despite failed prior test; must recognize valid clinical justification |
+| `hard_spinal_fusion` | Hard | Spinal fusion — BMI 38, buried MRSA infection, conflicting guidelines | Buried contraindication (active infection) + conflicting guidelines |
+| `hard_cardiac_cath` | Hard | Cardiac catheterization — positive stress test but eGFR 22, recent GI bleed | Multiple buried contraindications (renal failure + active bleeding risk) |
+| `hard_gene_therapy` | Hard | Zolgensma for SMA — age-eligible but elevated transaminases | Buried hepatic contraindication in a high-stakes $2.1M gene therapy |
 
 ## Reward Function
 
@@ -108,5 +114,11 @@ docker run -p 8000:8000 med-pa-env
 | Task | Expected Score |
 |---|---|
 | `easy_knee_mri` | 0.85–1.0 |
+| `easy_chest_xray` | 0.85–1.0 |
+| `easy_pt_eval` | 0.85–1.0 |
 | `medium_humira` | 0.60–0.80 |
+| `medium_ozempic` | 0.55–0.75 |
+| `medium_sleep_study` | 0.60–0.80 |
 | `hard_spinal_fusion` | 0.30–0.60 |
+| `hard_cardiac_cath` | 0.25–0.55 |
+| `hard_gene_therapy` | 0.20–0.50 |

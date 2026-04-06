@@ -45,6 +45,85 @@ CLINICAL_GUIDELINES = {
         ],
         "auto_approve_if_criteria_met": False,
     },
+    "GL-CHEST-XRAY-001": {
+        "name": "Chest X-Ray for Persistent Cough",
+        "procedure_codes": ["71046"],
+        "diagnosis_codes": ["R05.9"],
+        "criteria": [
+            "cough_persisting_greater_than_3_weeks",
+            "failed_empiric_treatment",
+        ],
+        "auto_approve_if_criteria_met": True,
+    },
+    "GL-PT-EVAL-001": {
+        "name": "Physical Therapy Evaluation - Shoulder",
+        "procedure_codes": ["97161"],
+        "diagnosis_codes": ["M75.111"],
+        "criteria": [
+            "documented_rotator_cuff_pathology",
+            "pain_limiting_daily_activities",
+        ],
+        "auto_approve_if_criteria_met": True,
+    },
+    "GL-GLP1-001": {
+        "name": "GLP-1 Agonist for Type 2 Diabetes with Obesity",
+        "procedure_codes": ["J3490"],
+        "diagnosis_codes": ["E11.65", "E66.01"],
+        "criteria": [
+            "BMI_greater_than_30_or_27_with_comorbidity",
+            "documented_failure_of_lifestyle_modification_6_months",
+            "documented_failure_of_metformin_or_contraindication",
+            "HbA1c_greater_than_7",
+        ],
+        "auto_approve_if_criteria_met": False,
+    },
+    "GL-SLEEP-001": {
+        "name": "Polysomnography for Suspected OSA",
+        "procedure_codes": ["95810"],
+        "diagnosis_codes": ["G47.33"],
+        "criteria": [
+            "epworth_sleepiness_scale_greater_than_10",
+            "documented_snoring_or_witnessed_apneas",
+            "failed_home_sleep_test_or_complex_comorbidities",
+        ],
+        "auto_approve_if_criteria_met": False,
+    },
+    "GL-CARDIAC-CATH-001": {
+        "name": "Cardiac Catheterization for Acute Coronary Syndrome",
+        "procedure_codes": ["93458"],
+        "diagnosis_codes": ["I25.10", "I20.0"],
+        "criteria": [
+            "positive_stress_test_or_troponin_elevation",
+            "refractory_angina_despite_medical_therapy",
+            "no_active_bleeding",
+            "eGFR_greater_than_30",
+        ],
+        "auto_approve_if_criteria_met": False,
+    },
+    "GL-CARDIAC-CATH-002": {
+        "name": "Cardiac Catheterization - Elective Criteria",
+        "procedure_codes": ["93458"],
+        "diagnosis_codes": ["I25.10"],
+        "criteria": [
+            "documented_ischemia_on_noninvasive_testing",
+            "failed_optimal_medical_therapy_3_months",
+            "LVEF_assessment_completed",
+        ],
+        "auto_approve_if_criteria_met": False,
+    },
+    "GL-GENE-THERAPY-001": {
+        "name": "Gene Therapy - Zolgensma for SMA",
+        "procedure_codes": ["J3399"],
+        "diagnosis_codes": ["G12.0", "G12.1"],
+        "criteria": [
+            "confirmed_SMN1_gene_deletion_or_mutation",
+            "age_less_than_2_years",
+            "no_advanced_respiratory_failure",
+            "anti_AAV9_antibody_titer_below_threshold",
+            "no_active_hepatic_disease",
+        ],
+        "auto_approve_if_criteria_met": False,
+    },
 }
 
 FORMULARY = {
@@ -54,9 +133,22 @@ FORMULARY = {
         "step_therapy_required": True,
         "alternatives": ["infliximab", "vedolizumab"],
     },
+    "semaglutide": {
+        "tier": "specialty",
+        "requires_pa": True,
+        "step_therapy_required": True,
+        "alternatives": ["liraglutide", "tirzepatide"],
+    },
+    "onasemnogene": {
+        "tier": "specialty",
+        "requires_pa": True,
+        "step_therapy_required": False,
+        "alternatives": ["nusinersen", "risdiplam"],
+    },
 }
 
 TASKS = {
+    # ── EASY ──────────────────────────────────────────────
     "easy_knee_mri": {
         "request": {
             "request_id": "PA-2024-001",
@@ -87,6 +179,62 @@ TASKS = {
             "denial_reason_code": None,
         },
     },
+    "easy_chest_xray": {
+        "request": {
+            "request_id": "PA-2024-004",
+            "patient": {"age": 62, "gender": "F", "plan_id": "HMO-100"},
+            "diagnosis": ["R05.9"],
+            "procedure": "71046",
+            "clinical_notes": (
+                "62-year-old female presents with persistent productive cough for five weeks. "
+                "Initially treated empirically with a 10-day course of amoxicillin-clavulanate "
+                "for suspected community-acquired pneumonia with no improvement. A subsequent "
+                "trial of inhaled corticosteroids and albuterol for possible reactive airway "
+                "disease also failed to resolve symptoms. Patient is a never-smoker with no "
+                "occupational exposures. Vital signs are stable, oxygen saturation 97% on room "
+                "air. Auscultation reveals diminished breath sounds at the right base. Given "
+                "the duration of symptoms and failure of empiric therapy, a two-view chest "
+                "X-ray is requested to evaluate for underlying pathology including mass, "
+                "effusion, or chronic infection."
+            ),
+            "prior_treatments": ["antibiotics_10_days", "inhaled_corticosteroids"],
+            "attachments": ["pcp_notes", "medication_history"],
+        },
+        "ground_truth": {
+            "decision": "approve",
+            "required_criteria": ["GL-CHEST-XRAY-001"],
+            "required_missing_fields": [],
+            "denial_reason_code": None,
+        },
+    },
+    "easy_pt_eval": {
+        "request": {
+            "request_id": "PA-2024-005",
+            "patient": {"age": 55, "gender": "M", "plan_id": "PPO-750"},
+            "diagnosis": ["M75.111"],
+            "procedure": "97161",
+            "clinical_notes": (
+                "55-year-old male presents with right shoulder pain for three months following "
+                "a fall onto an outstretched hand. MRI demonstrates a partial-thickness tear of "
+                "the supraspinatus tendon with mild subacromial bursitis. Patient reports "
+                "significant difficulty with overhead activities, dressing, and sleep disruption "
+                "due to pain. Range of motion is limited: forward flexion 120 degrees, abduction "
+                "100 degrees with painful arc between 60-120 degrees. Neer and Hawkins "
+                "impingement signs are positive. Conservative management with NSAIDs and home "
+                "exercises has provided minimal relief. Requesting physical therapy evaluation "
+                "and treatment plan for rotator cuff rehabilitation."
+            ),
+            "prior_treatments": ["nsaid_therapy", "home_exercises"],
+            "attachments": ["mri_report", "orthopedic_referral"],
+        },
+        "ground_truth": {
+            "decision": "approve",
+            "required_criteria": ["GL-PT-EVAL-001"],
+            "required_missing_fields": [],
+            "denial_reason_code": None,
+        },
+    },
+    # ── MEDIUM ────────────────────────────────────────────
     "medium_humira": {
         "request": {
             "request_id": "PA-2024-002",
@@ -120,6 +268,69 @@ TASKS = {
             "denial_reason_code": None,
         },
     },
+    "medium_ozempic": {
+        "request": {
+            "request_id": "PA-2024-006",
+            "patient": {"age": 48, "gender": "M", "plan_id": "PPO-500"},
+            "diagnosis": ["E11.65", "E66.01"],
+            "procedure": "J3490",
+            "clinical_notes": (
+                "48-year-old male with type 2 diabetes mellitus and morbid obesity (BMI 36.2) "
+                "presenting for authorization of semaglutide (Ozempic) 1mg weekly injection. "
+                "Patient was diagnosed with T2DM two years ago. HbA1c is currently 8.4% despite "
+                "lifestyle modifications including a structured diet program supervised by a "
+                "registered dietitian for the past eight months and a progressive exercise "
+                "regimen. Patient was started on metformin 1000mg BID one year ago but developed "
+                "severe GI intolerance (persistent diarrhea, nausea) requiring discontinuation "
+                "after three months. He was then trialed on glipizide 10mg BID for six months "
+                "with HbA1c only decreasing from 9.1% to 8.4%. Comorbidities include "
+                "hypertension controlled on lisinopril and hyperlipidemia on atorvastatin. "
+                "Patient reports the dietitian records from months 1-4 of the lifestyle program "
+                "are at a previous provider's office and have not yet been transferred."
+            ),
+            "prior_treatments": ["lifestyle_modification_8_months", "metformin_discontinued", "glipizide_6_months"],
+            "attachments": ["endocrinology_notes", "lab_results", "partial_dietitian_records"],
+        },
+        "ground_truth": {
+            "decision": "request_info",
+            "required_criteria": ["GL-GLP1-001"],
+            "required_missing_fields": [
+                "complete_lifestyle_modification_records",
+                "metformin_intolerance_documentation",
+            ],
+            "denial_reason_code": None,
+        },
+    },
+    "medium_sleep_study": {
+        "request": {
+            "request_id": "PA-2024-007",
+            "patient": {"age": 41, "gender": "F", "plan_id": "HMO-250"},
+            "diagnosis": ["G47.33"],
+            "procedure": "95810",
+            "clinical_notes": (
+                "41-year-old female referred for in-lab polysomnography for suspected "
+                "obstructive sleep apnea. Patient reports excessive daytime sleepiness with "
+                "Epworth Sleepiness Scale score of 15, loud snoring confirmed by bed partner, "
+                "and witnessed apneic episodes approximately 3-4 times per night. BMI is 33.5. "
+                "Patient has comorbid atrial fibrillation on anticoagulation and moderate COPD "
+                "on tiotropium. A home sleep apnea test was attempted two weeks ago but was "
+                "technically inadequate — the nasal cannula dislodged during the night and the "
+                "oximetry signal was lost for over 60% of the recording, rendering the study "
+                "uninterpretable. Given the complex cardiopulmonary comorbidities and failed "
+                "home study, in-laboratory attended polysomnography is requested for definitive "
+                "diagnosis and CPAP titration."
+            ),
+            "prior_treatments": ["home_sleep_test_failed"],
+            "attachments": ["sleep_medicine_referral", "failed_hsat_report", "pulmonology_notes"],
+        },
+        "ground_truth": {
+            "decision": "approve",
+            "required_criteria": ["GL-SLEEP-001"],
+            "required_missing_fields": [],
+            "denial_reason_code": None,
+        },
+    },
+    # ── HARD ──────────────────────────────────────────────
     "hard_spinal_fusion": {
         "request": {
             "request_id": "PA-2024-003",
@@ -177,6 +388,105 @@ TASKS = {
             "contraindication": "active_infection_mrsa",
         },
     },
+    "hard_cardiac_cath": {
+        "request": {
+            "request_id": "PA-2024-008",
+            "patient": {"age": 67, "gender": "M", "plan_id": "PPO-1000"},
+            "diagnosis": ["I25.10", "I20.0"],
+            "procedure": "93458",
+            "clinical_notes": (
+                "67-year-old male with known coronary artery disease and chronic stable angina "
+                "presenting with worsening exertional chest pain over the past four months "
+                "despite maximal medical therapy. Current medications include aspirin 81mg, "
+                "atorvastatin 80mg, metoprolol succinate 200mg, amlodipine 10mg, and "
+                "isosorbide mononitrate 60mg daily. Patient reports angina now occurring with "
+                "minimal exertion (walking one block) and occasionally at rest, representing "
+                "CCS Class III-IV symptoms.\n\n"
+                "Nuclear stress test performed three weeks ago demonstrates a large area of "
+                "reversible perfusion defect in the LAD territory involving the anterior wall "
+                "and apex, with an estimated 18% ischemic myocardium. LVEF on gated images is "
+                "45%. Echocardiogram confirms LVEF 44% with anterior wall hypokinesis.\n\n"
+                "Laboratory data: troponin I negative x2, BNP 340 pg/mL, creatinine 2.8 mg/dL "
+                "(eGFR 22 mL/min), hemoglobin 9.2 g/dL. Patient has stage 4 CKD and is "
+                "followed by nephrology. He was hospitalized two weeks ago for a GI bleed from "
+                "a duodenal ulcer requiring transfusion of 3 units pRBC; EGD showed a visible "
+                "vessel that was clipped. He was restarted on aspirin five days ago. The "
+                "interventional cardiologist recommends diagnostic catheterization with possible "
+                "PCI. Nephrology has been consulted regarding contrast risk and recommends "
+                "pre-hydration protocol."
+            ),
+            "prior_treatments": [
+                "maximal_medical_therapy_4_months",
+                "nuclear_stress_test",
+                "echocardiogram",
+            ],
+            "attachments": [
+                "cardiology_notes",
+                "stress_test_report",
+                "nephrology_consult",
+                "gi_discharge_summary",
+            ],
+        },
+        "ground_truth": {
+            "decision": "deny",
+            "required_criteria": ["GL-CARDIAC-CATH-001", "GL-CARDIAC-CATH-002"],
+            "required_missing_fields": [],
+            "denial_reason_code": "CONTRAINDICATION_ACTIVE_BLEEDING_AND_RENAL",
+            "contraindication": "recent_gi_bleed_and_eGFR_below_30",
+        },
+    },
+    "hard_gene_therapy": {
+        "request": {
+            "request_id": "PA-2024-009",
+            "patient": {"age": 1, "gender": "F", "plan_id": "PPO-2000"},
+            "diagnosis": ["G12.1"],
+            "procedure": "J3399",
+            "clinical_notes": (
+                "14-month-old female with genetically confirmed spinal muscular atrophy (SMA) "
+                "type 2, presenting for authorization of onasemnogene abeparvovec (Zolgensma). "
+                "Genetic testing confirms homozygous deletion of SMN1 gene with 3 copies of "
+                "SMN2. Patient was diagnosed at 8 months of age when parents noted failure to "
+                "achieve independent sitting. Current motor function assessment shows ability "
+                "to sit with support but no independent sitting or standing. CHOP-INTEND score "
+                "is 38.\n\n"
+                "The child was started on nusinersen (Spinraza) at 9 months and has received "
+                "the four loading doses plus one maintenance dose with modest improvement in "
+                "motor function (CHOP-INTEND improved from 32 to 38). The treating neurologist "
+                "recommends switching to Zolgensma for potentially superior efficacy as a "
+                "one-time gene therapy.\n\n"
+                "Recent labs: ALT 85 U/L (elevated, normal <45), AST 72 U/L (elevated), "
+                "total bilirubin 0.8 mg/dL. Hepatology consultation notes that the transaminase "
+                "elevation is likely related to nusinersen but recommends monitoring. Anti-AAV9 "
+                "antibody titer was drawn and resulted at 1:25 (threshold for treatment is "
+                "<1:50, so patient qualifies). Pulmonary function: patient is not ventilator "
+                "dependent, no history of respiratory failure, currently on nighttime BiPAP "
+                "initiated prophylactically.\n\n"
+                "The family has been counseled extensively about the $2.1M cost, the hepatotoxicity "
+                "risk requiring prednisolone pre-treatment and liver monitoring, and the fact "
+                "that this is an irreversible one-time treatment. The neurology team notes the "
+                "patient is approaching the age cutoff and requests expedited review."
+            ),
+            "prior_treatments": [
+                "nusinersen_5_doses",
+                "physical_therapy_ongoing",
+                "nighttime_bipap",
+            ],
+            "attachments": [
+                "genetic_testing_report",
+                "neurology_assessment",
+                "hepatology_consult",
+                "aav9_antibody_results",
+                "pulmonary_function",
+            ],
+        },
+        "ground_truth": {
+            "decision": "deny",
+            "required_criteria": ["GL-GENE-THERAPY-001"],
+            "required_missing_fields": [],
+            "denial_reason_code": "CONTRAINDICATION_HEPATIC_DISEASE",
+            "contraindication": "elevated_transaminases_active_hepatic_concern",
+        },
+    },
 }
 
 PATIENT_HISTORIES = {
@@ -200,5 +510,22 @@ PATIENT_HISTORIES = {
             {"request_id": "PA-2023-105", "procedure": "62322", "decision": "approve", "date": "2023-09-04"},
         ],
         "chronic_conditions": ["lumbar_spondylosis", "chronic_low_back_pain", "hypertension", "obesity"],
+    },
+    "HMO-100": {
+        "prior_authorizations": [],
+        "chronic_conditions": ["hypertension", "osteoarthritis"],
+    },
+    "PPO-750": {
+        "prior_authorizations": [
+            {"request_id": "PA-2023-200", "procedure": "73221", "decision": "approve", "date": "2023-11-01"},
+        ],
+        "chronic_conditions": ["rotator_cuff_tear", "hypertension"],
+    },
+    "PPO-2000": {
+        "prior_authorizations": [
+            {"request_id": "PA-2024-050", "procedure": "J2326", "decision": "approve", "date": "2024-02-15"},
+            {"request_id": "PA-2024-051", "procedure": "J2326", "decision": "approve", "date": "2024-03-01"},
+        ],
+        "chronic_conditions": ["spinal_muscular_atrophy"],
     },
 }

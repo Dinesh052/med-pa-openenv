@@ -4,7 +4,7 @@ Medical Prior Authorization - Inference Script
 STDOUT FORMAT:
  [START] task=<task_name> env=med_pa model=<model_name>
  [STEP] step=<n> action=<action_str> reward=<0.00> done=<true|false> error=<msg|null>
- [END] success=<true|false> steps=<n> score=<score> rewards=<r1,r2,...,rn>
+ [END] success=<true|false> steps=<n> rewards=<r1,r2,...,rn>
 """
 
 import asyncio
@@ -26,7 +26,11 @@ MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:8000")
 BENCHMARK = "med_pa"
 MAX_STEPS = 8
-TASKS = ["easy_knee_mri", "medium_humira", "hard_spinal_fusion"]
+TASKS = [
+    "easy_knee_mri", "medium_humira", "hard_spinal_fusion",
+    "easy_chest_xray", "easy_pt_eval", "medium_ozempic",
+    "medium_sleep_study", "hard_cardiac_cath", "hard_gene_therapy",
+]
 
 SYSTEM_PROMPT = textwrap.dedent("""
 You are a medical prior authorization (PA) reviewer. Evaluate PA requests by gathering clinical guidelines, reviewing patient data, and making approve/deny/request_info decisions.
@@ -72,9 +76,9 @@ def log_step(step: int, action: str, reward: float, done: bool, error: Optional[
     print(f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}", flush=True)
 
 
-def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
+def log_end(success: bool, steps: int, rewards: List[float]) -> None:
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
-    print(f"[END] success={str(success).lower()} steps={steps} score={score:.3f} rewards={rewards_str}", flush=True)
+    print(f"[END] success={str(success).lower()} steps={steps} rewards={rewards_str}", flush=True)
 
 
 def parse_action(text: str) -> dict:
@@ -112,7 +116,6 @@ def get_llm_action(client: OpenAI, messages: list) -> str:
 async def run_task(llm: OpenAI, env: MedPAEnv, task_name: str) -> float:
     rewards: List[float] = []
     steps_taken = 0
-    score = 0.0
     success = False
 
     log_start(task=task_name, env=BENCHMARK, model=MODEL_NAME)
@@ -160,7 +163,6 @@ async def run_task(llm: OpenAI, env: MedPAEnv, task_name: str) -> float:
             if done:
                 break
 
-            # Build next prompt
             next_msg = f"Result: {obs.last_action_result}"
             if obs.guidelines_retrieved:
                 next_msg += f"\nGuidelines: {json.dumps(obs.guidelines_retrieved)}"
@@ -171,15 +173,16 @@ async def run_task(llm: OpenAI, env: MedPAEnv, task_name: str) -> float:
             next_msg += "\n\nContinue your review. Respond with JSON only."
             messages.append({"role": "user", "content": next_msg})
 
-        score = max(0.0, min(1.0, rewards[-1] if rewards else 0.0))
+        # Sum rewards across trajectory, not just last
+        score = max(0.0, min(1.0, sum(rewards)))
         success = score > 0 and result.done
 
     except Exception as e:
         print(f"[DEBUG] Task error: {e}", flush=True)
     finally:
-        log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
+        log_end(success=success, steps=steps_taken, rewards=rewards)
 
-    return score
+    return sum(rewards)
 
 
 async def main() -> None:

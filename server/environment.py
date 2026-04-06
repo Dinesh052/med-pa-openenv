@@ -179,16 +179,16 @@ class MedPAEnvironment(Environment):
             bd["decision"] = 0.0
             fb.append(f"Wrong decision (expected {gt['decision']}).")
 
-        # Rationale quality (0.2)
-        rationale = (action.rationale or "").lower()
+        # Rationale quality (0.2) — exact string matching for guideline IDs
+        rationale = action.rationale or ""
         req_gl = gt.get("required_criteria", [])
-        matched = sum(1 for g in req_gl if g.lower() in rationale)
+        matched = sum(1 for g in req_gl if g in rationale)
         bd["rationale"] = 0.2 * (matched / len(req_gl)) if req_gl else (0.1 if rationale else 0.0)
 
-        # Hallucination penalty
-        cited = re.findall(r"gl-[\w-]+", rationale, re.IGNORECASE)
+        # Hallucination penalty — exact match against known guideline IDs
+        cited = re.findall(r"GL-[\w-]+", rationale)
         for c in cited:
-            if c.upper() not in CLINICAL_GUIDELINES:
+            if c not in CLINICAL_GUIDELINES:
                 bd["rationale"] = max(0.0, bd["rationale"] - 0.3)
                 fb.append(f"Hallucinated guideline: {c}.")
                 break
