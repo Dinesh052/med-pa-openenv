@@ -18,6 +18,7 @@ ALL_ACTIONS = ["approve", "deny", "request_info", "lookup_guideline", "check_for
 
 
 class MedPAEnvironment(Environment):
+    SUPPORTS_CONCURRENT_SESSIONS = True
 
     def __init__(self):
         self._state = PAState()
