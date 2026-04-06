@@ -9,4 +9,6 @@ COPY . .
 
 EXPOSE 8000
 
+ENV ENABLE_WEB_INTERFACE=true
+
 CMD ["uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "8000"]
