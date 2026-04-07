@@ -183,12 +183,13 @@ async def run_task(client: OpenAI, env: MedPAEnv, task_name: str) -> float:
                 break
 
         # Score = best reward from grader (terminal action fires the grader)
-        score = max(0.0, min(1.0, max(rewards))) if rewards else 0.0
+        # Use strict open interval (0.01, 0.99) — validator rejects exactly 0.0 or 1.0
+        score = max(0.01, min(0.99, max(rewards))) if rewards else 0.01
         success = score >= 0.3
 
     except Exception as e:
         print(f"[DEBUG] Task error: {e}", flush=True)
-        score = 0.0
+        score = 0.01
     finally:
         log_end(success=success, steps=steps_taken, rewards=rewards)
 
@@ -202,7 +203,7 @@ async def run_task_with_timeout(client: OpenAI, env: MedPAEnv, task_name: str) -
     except asyncio.TimeoutError:
         print(f"[DEBUG] Task {task_name} timed out (90s)", flush=True)
         log_end(success=False, steps=0, rewards=[])
-        return 0.0
+        return 0.01
 
 
 async def main() -> None:
@@ -210,6 +211,12 @@ async def main() -> None:
 
     if LOCAL_IMAGE_NAME:
         env = await MedPAEnv.from_docker_image(LOCAL_IMAGE_NAME)
+    elif ENV_BASE_URL == "http://localhost:8000" and not os.getenv("ENV_BASE_URL"):
+        raise RuntimeError(
+            "Neither LOCAL_IMAGE_NAME nor ENV_BASE_URL is set. "
+            "Set ENV_BASE_URL to your running environment endpoint, "
+            "or set LOCAL_IMAGE_NAME to run via Docker."
+        )
     else:
         env = MedPAEnv(base_url=ENV_BASE_URL)
         await env.connect()

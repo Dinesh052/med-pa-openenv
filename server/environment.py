@@ -194,7 +194,7 @@ class MedPAEnvironment(Environment):
         gt = self._task_data["ground_truth"]
         try:
             result = grade_task(self._task_id, self._actions_taken, gt, MAX_STEPS)
-            score = max(0.0, min(1.0, result["score"]))
+            score = max(0.01, min(0.99, result["score"]))
             breakdown = result["breakdown"]
             feedback = result["feedback"]
         except (ValueError, KeyError):
@@ -227,7 +227,7 @@ class MedPAEnvironment(Environment):
         bd["efficiency"] = max(0.0, 0.1 * (1 - (self._state.current_step - 1) / 7))
         bd["rationale"] = 0.1 if action.rationale else 0.0
         bd["info"] = 0.2 if any(a["action_type"] in ("lookup_guideline", "check_formulary", "get_patient_history") for a in self._actions_taken) else 0.0
-        total = max(0.0, min(1.0, sum(bd.values())))
+        total = max(0.01, min(0.99, sum(bd.values())))
         fb = "Correct." if correct else f"Wrong decision (expected {gt['decision']})."
         return total, bd, fb
 
@@ -236,7 +236,7 @@ class MedPAEnvironment(Environment):
         gt = self._task_data["ground_truth"]
         try:
             result = grade_task(self._task_id, self._actions_taken, gt, MAX_STEPS)
-            score = max(0.0, min(1.0, result["score"]))
+            score = max(0.01, min(0.99, result["score"]))
             breakdown = result["breakdown"]
         except (ValueError, KeyError):
             score, breakdown = 0.05, {"timeout": 0.05}
