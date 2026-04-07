@@ -211,12 +211,6 @@ async def main() -> None:
 
     if LOCAL_IMAGE_NAME:
         env = await MedPAEnv.from_docker_image(LOCAL_IMAGE_NAME)
-    elif ENV_BASE_URL == "http://localhost:8000" and not os.getenv("ENV_BASE_URL"):
-        raise RuntimeError(
-            "Neither LOCAL_IMAGE_NAME nor ENV_BASE_URL is set. "
-            "Set ENV_BASE_URL to your running environment endpoint, "
-            "or set LOCAL_IMAGE_NAME to run via Docker."
-        )
     else:
         env = MedPAEnv(base_url=ENV_BASE_URL)
         await env.connect()
@@ -236,4 +230,8 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except Exception as exc:
+        print(f"[END] success=false steps=0 score=0.01 rewards=", flush=True)
+        print(f"[DEBUG] Fatal: {exc}", flush=True)
