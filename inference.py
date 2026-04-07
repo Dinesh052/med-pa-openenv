@@ -4,7 +4,7 @@ Medical Prior Authorization - Inference Script
 STDOUT FORMAT:
  [START] task=<task_name> env=med_pa model=<model_name>
  [STEP] step=<n> action=<action_str> reward=<0.00> done=<true|false> error=<msg|null>
- [END] success=<true|false> steps=<n> rewards=<r1,r2,...,rn>
+ [END] success=<true|false> steps=<n> score=<0.00> rewards=<r1,r2,...,rn>
 """
 
 import asyncio

@@ -540,7 +540,7 @@ def grade_hard(
 
 GRADERS = {
     "easy_knee_mri": grade_easy,
-    "medium_humira_crohns": grade_medium,
+    "medium_humira": grade_medium,
     "hard_spinal_fusion": grade_hard,
 }
 

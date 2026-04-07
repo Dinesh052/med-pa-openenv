@@ -6,5 +6,11 @@ app: server.app:app
 port: 8000
 tasks:
   - easy_knee_mri
-  - medium_humira_crohns
+  - easy_chest_xray
+  - easy_pt_eval
+  - medium_humira
+  - medium_ozempic
+  - medium_sleep_study
   - hard_spinal_fusion
+  - hard_cardiac_cath
+  - hard_gene_therapy
