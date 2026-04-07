@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 try:
     from openenv.core.env_server.types import Action, Observation, State
@@ -34,6 +35,16 @@ class PAAction(Action):
         default=None,
         description="Agent's rationale for the action. Required for approve/deny.",
     )
+
+    @field_validator("payload", mode="before")
+    @classmethod
+    def _coerce_payload(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (json.JSONDecodeError, ValueError):
+                return {}
+        return v if v is not None else {}
 
 
 class PAObservation(Observation):
