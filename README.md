@@ -67,7 +67,7 @@ Terminal actions: `approve`, `deny`, `request_info`. Information-gathering actio
 | `medium_humira` | Medium | Humira for Crohn's disease — CDAI 285, vague biologic mention | Missing step-therapy documentation; must request info |
 | `medium_ozempic` | Medium | Semaglutide for T2DM+obesity — metformin intolerance, incomplete records | Missing lifestyle modification records and intolerance documentation |
 | `medium_sleep_study` | Medium | In-lab polysomnography — failed home test, complex comorbidities | Approve despite failed prior test; must recognize valid clinical justification |
-| `hard_spinal_fusion` | Hard | Spinal fusion — BMI 38, buried MRSA infection, conflicting guidelines | Buried contraindication (active infection) + conflicting guidelines |
+| `hard_spinal_fusion` | Hard | Spinal fusion — BMI 38, buried HbA1c 8.4% uncontrolled diabetes, conflicting guidelines | Buried contraindication (HbA1c 8.4% > 8.0% threshold) + conflicting guidelines (GL-SPINE-FUSION-001 vs GL-SPINE-FUSION-002) |
 | `hard_cardiac_cath` | Hard | Cardiac catheterization — positive stress test but eGFR 22, recent GI bleed | Multiple buried contraindications (renal failure + active bleeding risk) |
 | `hard_gene_therapy` | Hard | Zolgensma for SMA — age-eligible but elevated transaminases | Buried hepatic contraindication in a high-stakes $2.1M gene therapy |
 

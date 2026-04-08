@@ -77,7 +77,7 @@ def build_user_prompt(obs: Any, step: int, history: List[str]) -> str:
     patient = obs.patient or {}
     parts = [
         f"=== PA Review Case: {obs.request_id} (Step {step}/{MAX_STEPS}) ===",
-        f"Patient: {patient.get('age', '?')}yo {patient.get('sex', '?')}, Plan: {patient.get('insurance_plan', '?')}",
+        f"Patient: {patient.get('age', '?')}yo {patient.get('gender') or patient.get('sex', '?')}, Plan: {patient.get('plan_id') or patient.get('insurance_plan', '?')}",
         f"Diagnosis (ICD-10): {', '.join(obs.diagnosis) if obs.diagnosis else 'N/A'}",
         f"Procedure (CPT): {obs.procedure}",
         f"\nClinical Notes:\n{obs.clinical_notes}",
@@ -102,7 +102,7 @@ def build_user_prompt(obs: Any, step: int, history: List[str]) -> str:
         parts.append(f"\nAvailable actions: {', '.join(obs.available_actions)}")
     steps_remaining = MAX_STEPS - step
     if steps_remaining <= 1:
-        parts.append("\n⚠️ WARNING: Only 1 step remaining. You MUST make a terminal decision (approve/deny/request_info) NOW.")
+        parts.append("\n⚠️ WARNING: Only 1 step remaining. You MUST make a terminal decision (approve or deny) NOW.")
     parts.append("\nRespond with ONE JSON action object:")
     return "\n".join(parts)
 
@@ -146,6 +146,7 @@ async def run_task(client: OpenAI, env: MedPAEnv, task_name: str) -> float:
     history: List[str] = []
     steps_taken = 0
     success = False
+    score = 0.01  # default; overwritten on success or in except block
 
     log_start(task_name)
     try:

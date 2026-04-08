@@ -5,9 +5,10 @@ from typing import Any, Dict
 try:
     from openenv.core.env_client import EnvClient
     from openenv.core.client_types import StepResult
-except ImportError:
-    from openenv.core.env_client import EnvClient
-    from openenv.core.client_types import StepResult
+except ImportError as _e:
+    raise ImportError(
+        "openenv-core is required. Install it with: pip install openenv-core"
+    ) from _e
 
 from models import PAAction, PAObservation, PAState
 

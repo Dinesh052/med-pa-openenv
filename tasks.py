@@ -685,7 +685,7 @@ TASKS = {
             "decision": "deny",
             "required_criteria": ["GL-CARDIAC-CATH-001", "GL-CARDIAC-CATH-002"],
             "required_missing_fields": [],
-            "denial_reason_code": "CONTRAINDICATION_ACTIVE_BLEEDING_AND_RENAL",
+            "denial_reason_code": "CONTRAINDICATION_ACTIVE",
             "contraindication": "recent_gi_bleed_and_eGFR_below_30",
             "key_findings": [
                 "eGFR 22 mL/min — below 30 threshold (stage 4 CKD)",
@@ -761,7 +761,7 @@ TASKS = {
             "decision": "deny",
             "required_criteria": ["GL-GENE-THERAPY-001"],
             "required_missing_fields": [],
-            "denial_reason_code": "CONTRAINDICATION_HEPATIC_DISEASE",
+            "denial_reason_code": "SAFETY_CONCERN",
             "contraindication": "elevated_transaminases_active_hepatic_concern",
             "key_findings": [
                 "ALT 85 U/L (normal <45) — nearly 2x upper limit",

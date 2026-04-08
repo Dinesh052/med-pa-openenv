@@ -13,12 +13,15 @@ from tasks import TASKS, CLINICAL_GUIDELINES, FORMULARY, PATIENT_HISTORIES
 from grader import grade_task
 
 MAX_STEPS = 8
-TERMINAL_ACTIONS = {"approve", "deny", "request_info"}
+TERMINAL_ACTIONS = {"approve", "deny"}
 ALL_ACTIONS = ["approve", "deny", "request_info", "lookup_guideline", "check_formulary", "get_patient_history"]
 
 
 class MedPAEnvironment(Environment):
-    SUPPORTS_CONCURRENT_SESSIONS = True
+    # Each instance holds mutable per-episode state, so concurrent sessions
+    # MUST be routed to separate instances. False tells the openenv server
+    # to never share one instance across multiple concurrent sessions.
+    SUPPORTS_CONCURRENT_SESSIONS = False
 
     def __init__(self):
         self._state = PAState()
@@ -135,10 +138,13 @@ class MedPAEnvironment(Environment):
         entry = FORMULARY.get(drug)
 
         if entry:
+            step_therapy = entry.get("step_therapy", [])
+            step_therapy_required = entry.get("step_therapy_required", bool(step_therapy))
+            step_therapy_str = f"Yes — {', '.join(step_therapy)}" if step_therapy else str(step_therapy_required)
             self._formulary_result = (
                 f"Drug: {drug}\nTier: {entry['tier']}\n"
                 f"Requires PA: {entry['requires_pa']}\n"
-                f"Step therapy required: {entry['step_therapy_required']}\n"
+                f"Step therapy required: {step_therapy_str}\n"
                 f"Alternatives: {', '.join(entry.get('alternatives', []))}"
             )
         else:
@@ -180,9 +186,15 @@ class MedPAEnvironment(Environment):
                 results.append(f"[{field}]: Document not available.")
         self._info_request_result = "\n\n".join(results)
 
-        # request_info is terminal
-        self._done = True
-        return self._grade_and_respond(action, req, f"Requested info: {fields}.")
+        # request_info is NOT terminal — the agent must review the received docs and then
+        # make a final approve/deny decision. This models the real PA workflow.
+        if step_num >= MAX_STEPS:
+            return self._force_end(req, "Step limit reached without a decision.")
+        return self._make_observation(
+            req,
+            "Additional information received. Review the documents and make your coverage decision (approve or deny).",
+            0.0,
+        )
 
     def _handle_decision(self, action: PAAction, req: dict, step_num: int) -> PAObservation:
         self._done = True
@@ -197,7 +209,7 @@ class MedPAEnvironment(Environment):
             score = max(0.01, min(0.99, result["score"]))
             breakdown = result["breakdown"]
             feedback = result["feedback"]
-        except (ValueError, KeyError):
+        except Exception:
             score, breakdown, feedback = self._fallback_grade(action, gt)
 
         return PAObservation(
@@ -213,6 +225,7 @@ class MedPAEnvironment(Environment):
             patient_history_result=self._patient_history_result,
             info_request_result=self._info_request_result,
             available_actions=ALL_ACTIONS,
+            step_number=self._state.current_step,
             message=f"{msg_prefix} {feedback}",
             reward_breakdown=breakdown,
             done=True,
@@ -238,7 +251,7 @@ class MedPAEnvironment(Environment):
             result = grade_task(self._task_id, self._actions_taken, gt, MAX_STEPS)
             score = max(0.01, min(0.99, result["score"]))
             breakdown = result["breakdown"]
-        except (ValueError, KeyError):
+        except Exception:
             score, breakdown = 0.05, {"timeout": 0.05}
 
         return PAObservation(
@@ -254,6 +267,7 @@ class MedPAEnvironment(Environment):
             patient_history_result=self._patient_history_result,
             info_request_result=self._info_request_result,
             available_actions=ALL_ACTIONS,
+            step_number=self._state.current_step,
             message=message,
             reward_breakdown=breakdown,
             done=True,
@@ -274,6 +288,7 @@ class MedPAEnvironment(Environment):
             patient_history_result=self._patient_history_result,
             info_request_result=self._info_request_result,
             available_actions=ALL_ACTIONS,
+            step_number=self._state.current_step,
             message=message,
             done=False,
             reward=reward,

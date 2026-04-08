@@ -78,9 +78,16 @@ class PAObservation(Observation):
         default=None, description="Breakdown of reward components (terminal only)"
     )
 
+    # Explicitly declared so they survive serialization whether or not the openenv
+    # base Observation class adds them.
+    done: bool = Field(default=False, description="Whether the episode has ended")
+    reward: float = Field(default=0.0, description="Reward for the last action")
+
 
 class PAState(State):
+    episode_id: str = ""
     task_id: str = ""
+    step_count: int = 0
     current_step: int = 0
     max_steps: int = 8
     actions_taken: List[str] = []

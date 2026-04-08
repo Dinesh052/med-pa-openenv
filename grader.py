@@ -10,7 +10,7 @@ Deterministic graders that score agent performance 0.0–1.0 based on:
 """
 
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 
 def _normalize(val: float, lo: float = 0.0, hi: float = 1.0) -> float:
@@ -167,7 +167,7 @@ def grade_easy(
 
     # Hallucinated guideline penalty — check for any GL- reference that isn't the correct one
     rationale_str = (terminal_action.get("rationale", "") or "").upper()
-    gl_refs = re.findall(r"GL-[A-Z]+-\d+", rationale_str)
+    gl_refs = re.findall(r"GL-[A-Z0-9]+(?:-[A-Z0-9]+)*-\d+", rationale_str)
     correct_gl = ground_truth["applicable_guideline"].upper()
     for ref in gl_refs:
         if ref != correct_gl:
@@ -294,10 +294,11 @@ def grade_medium(
             ground_truth["applicable_guideline"],
         )
         breakdown["rationale_quality"] = round(0.2 * rationale_score, 4)
+        gl_id = ground_truth.get("applicable_guideline", "the applicable guideline")
         if rationale_score >= 0.5:
             feedback_parts.append("Rationale adequately references guideline and findings.")
         else:
-            feedback_parts.append("Rationale weak — must cite GL-GI-002 and specific therapy failures.")
+            feedback_parts.append(f"Rationale weak — must cite {gl_id} and specific therapy failures.")
 
     # Process quality (0.2) — must follow proper workflow
     process_score = 0.0
@@ -442,24 +443,28 @@ def grade_hard(
 
     # Guideline conflict resolution (0.15)
     correct_gl = ground_truth["applicable_guideline"].lower()
-    conflicting_gl = ground_truth.get("conflicting_guideline", "").lower()
+    _raw_cg = ground_truth.get("conflicting_guideline", "")
+    conflicting_gl = (_raw_cg.get("secondary", "") if isinstance(_raw_cg, dict) else (_raw_cg or "")).lower()
+    correct_gl_upper = ground_truth["applicable_guideline"].upper()
+    conflicting_gl_upper = conflicting_gl.upper() if conflicting_gl else ""
 
     mentions_correct = correct_gl in combined_text
-    mentions_conflicting = conflicting_gl in combined_text
+    # Avoid false positive: empty string is always "in" any text
+    mentions_conflicting = bool(conflicting_gl) and conflicting_gl in combined_text
 
     if mentions_correct and not mentions_conflicting:
         breakdown["guideline_conflict_resolved"] = 0.15
-        feedback_parts.append("Correctly identified GL-SPINE-003 as the applicable guideline.")
+        feedback_parts.append(f"Correctly identified {correct_gl_upper} as the applicable guideline.")
     elif mentions_correct and mentions_conflicting:
         if correct_gl in rationale:
             breakdown["guideline_conflict_resolved"] = 0.12
-            feedback_parts.append("Identified both guidelines and correctly applied GL-SPINE-003.")
+            feedback_parts.append(f"Identified both guidelines and correctly applied {correct_gl_upper}.")
         else:
             breakdown["guideline_conflict_resolved"] = 0.05
             feedback_parts.append("Referenced both guidelines but unclear which was applied.")
     elif mentions_conflicting and not mentions_correct:
         breakdown["guideline_conflict_resolved"] = 0.0
-        feedback_parts.append("Applied wrong guideline (GL-SPINE-004 instead of GL-SPINE-003).")
+        feedback_parts.append(f"Applied wrong guideline ({conflicting_gl_upper} instead of {correct_gl_upper}).")
     else:
         breakdown["guideline_conflict_resolved"] = 0.0
         feedback_parts.append("Did not reference any specific guideline for the denial.")
@@ -538,10 +543,369 @@ def grade_hard(
     }
 
 
+def _normalize_ground_truth(gt: Dict[str, Any]) -> Dict[str, Any]:
+    """Add normalized key aliases so all graders can rely on consistent field names.
+
+    tasks.py uses:  decision, required_criteria, required_missing_fields, denial_reason_code
+    graders expect: correct_decision, applicable_guideline, missing_fields, correct_denial_code
+    """
+    n = dict(gt)
+    # "decision" → "correct_decision"
+    if "correct_decision" not in n:
+        n["correct_decision"] = n.get("decision", "approve")
+    # "required_criteria" (list) → "applicable_guideline" (first element)
+    if "applicable_guideline" not in n:
+        criteria = n.get("required_criteria", [])
+        n["applicable_guideline"] = criteria[0] if criteria else ""
+    # "required_missing_fields" → "missing_fields"
+    if "missing_fields" not in n:
+        n["missing_fields"] = n.get("required_missing_fields", [])
+    # "denial_reason_code" → "correct_denial_code"
+    if "correct_denial_code" not in n:
+        n["correct_denial_code"] = n.get("denial_reason_code") or ""
+    # Normalize "conflicting_guideline" dict → string (secondary guideline ID)
+    cg = n.get("conflicting_guideline")
+    if isinstance(cg, dict):
+        n["conflicting_guideline"] = cg.get("secondary", "")
+    elif cg is None:
+        n["conflicting_guideline"] = ""
+    return n
+
+
+def grade_hard_cardiac(
+    actions_taken: List[Dict[str, Any]],
+    ground_truth: Dict[str, Any],
+    max_steps: int = 8,
+) -> Dict[str, Any]:
+    """Grade hard_cardiac_cath — deny with eGFR <30 and recent active GI bleed.
+
+    Scoring (strict):
+      - Contraindication found (0.25): must reference eGFR value AND bleed
+      - Guideline identification (0.15): must cite GL-CARDIAC-CATH-001
+      - Correct denial code (0.15): CONTRAINDICATION_ACTIVE exact; alternatives partial
+      - Decision correctness (0.15): deny
+      - Rationale quality (0.15): must cite guideline, contraindication, and why
+      - Process quality (0.15): lookup guideline + patient history + decide
+    """
+    breakdown: Dict[str, float] = {
+        "contraindication_found": 0.0,
+        "guideline_identification": 0.0,
+        "denial_code_quality": 0.0,
+        "decision_correctness": 0.0,
+        "rationale_quality": 0.0,
+        "process_quality": 0.0,
+        "penalties": 0.0,
+    }
+    feedback_parts: List[str] = []
+
+    terminal_action = None
+    guideline_looked_up = False
+    patient_history_checked = False
+    repeated_actions = 0
+    seen_actions: List[str] = []
+    action_sequence: List[str] = []
+
+    for act in actions_taken:
+        act_type = act.get("action_type", "")
+        act_key = f"{act_type}:{act.get('payload', {})}"
+        if act_key in seen_actions:
+            repeated_actions += 1
+        seen_actions.append(act_key)
+        action_sequence.append(act_type)
+        if act_type == "lookup_guideline":
+            guideline_looked_up = True
+        if act_type == "get_patient_history":
+            patient_history_checked = True
+        if act_type in ("approve", "deny"):
+            terminal_action = act
+            break
+
+    if terminal_action is None:
+        feedback_parts.append("No terminal decision was made.")
+        return {"score": 0.01, "breakdown": breakdown, "feedback": " ".join(feedback_parts)}
+
+    rationale = (terminal_action.get("rationale") or "").lower()
+    all_action_text = " ".join(
+        (a.get("rationale") or "") + " " + str(a.get("payload", {}))
+        for a in actions_taken
+    ).lower()
+    combined_text = rationale + " " + all_action_text
+
+    # Decision correctness (0.15)
+    if terminal_action["action_type"] == ground_truth["correct_decision"]:
+        breakdown["decision_correctness"] = 0.15
+        feedback_parts.append("Correct decision: denied.")
+    else:
+        feedback_parts.append(
+            f"CRITICAL: Wrong decision — should have denied (active GI bleed + eGFR 22 < 30)."
+        )
+        breakdown["penalties"] -= 0.1
+
+    # Contraindication found (0.25): eGFR < 30 AND active bleeding risk
+    has_egfr_value = any(v in combined_text for v in ["egfr", "22", "gfr"])
+    has_egfr_threshold = any(v in combined_text for v in ["30", "< 30", "<30", "below 30", "renal"])
+    has_bleed_concept = any(v in combined_text for v in ["bleed", "bleeding", "hemorrhage", "haemorrhage", "gi bleed"])
+    has_aspirin_timing = any(v in combined_text for v in ["aspirin", "5 days", "five days", "antiplatelet"])
+    has_contra_word = any(v in combined_text for v in ["contraindication", "contraindicated"])
+
+    if has_egfr_value and has_egfr_threshold and has_bleed_concept:
+        breakdown["contraindication_found"] = 0.25
+        feedback_parts.append("Correctly identified both contraindications: eGFR 22 < 30 and active bleeding risk.")
+    elif (has_egfr_value and has_egfr_threshold) or (has_bleed_concept and has_contra_word):
+        breakdown["contraindication_found"] = 0.15
+        feedback_parts.append("Partially identified contraindications — missed one of eGFR/bleeding.")
+    elif has_egfr_value or has_bleed_concept:
+        breakdown["contraindication_found"] = 0.08
+        feedback_parts.append("Vaguely referenced contraindication but missing specifics (eGFR 22, GI bleed).")
+    else:
+        feedback_parts.append("FAILED to identify key contraindications (eGFR 22 < 30 threshold; recent GI bleed).")
+
+    # Guideline identification (0.15)
+    correct_gl = ground_truth["applicable_guideline"].lower()
+    if correct_gl in combined_text:
+        if correct_gl in rationale:
+            breakdown["guideline_identification"] = 0.15
+            feedback_parts.append(f"Correctly cited {ground_truth['applicable_guideline']} in rationale.")
+        else:
+            breakdown["guideline_identification"] = 0.08
+            feedback_parts.append(f"Referenced {ground_truth['applicable_guideline']} but not in final rationale.")
+    else:
+        feedback_parts.append(f"Did not cite {ground_truth['applicable_guideline']} — required criteria not enumerated.")
+
+    # Denial code quality (0.15)
+    denial_payload = terminal_action.get("payload", {})
+    agent_denial_code = (
+        denial_payload.get("reason_code", "") or denial_payload.get("denial_code", "")
+    ).upper()
+    correct_code = ground_truth["correct_denial_code"]
+    alt_codes = [c.upper() for c in ground_truth.get("alternative_denial_codes", [])]
+
+    if agent_denial_code == correct_code:
+        breakdown["denial_code_quality"] = 0.15
+        feedback_parts.append(f"Correct denial reason code: {correct_code}.")
+    elif agent_denial_code in alt_codes:
+        breakdown["denial_code_quality"] = 0.07
+        feedback_parts.append(f"Acceptable denial code: {agent_denial_code} (best: {correct_code}).")
+    elif terminal_action["action_type"] == "deny" and agent_denial_code:
+        breakdown["denial_code_quality"] = 0.03
+        feedback_parts.append(f"Denial code '{agent_denial_code}' is not ideal for this case.")
+    else:
+        breakdown["denial_code_quality"] = 0.0
+        feedback_parts.append("Denied but provided no reason code.")
+
+    # Rationale quality (0.15)
+    rationale_score = _check_rationale_references(
+        terminal_action.get("rationale"), ground_truth["key_findings"], ground_truth["applicable_guideline"]
+    )
+    breakdown["rationale_quality"] = round(0.15 * rationale_score, 4)
+    if rationale_score >= 0.6:
+        feedback_parts.append("Strong rationale citing guideline and both contraindications.")
+    elif rationale_score >= 0.3:
+        feedback_parts.append("Rationale partially addresses the clinical complexity.")
+    else:
+        feedback_parts.append("Rationale insufficient — must address guideline criteria, eGFR, and bleeding risk.")
+
+    # Process quality (0.15)
+    process_score = 0.0
+    if guideline_looked_up:
+        process_score += 0.06
+    else:
+        feedback_parts.append("Guideline not consulted on a complex case.")
+    if patient_history_checked:
+        process_score += 0.06
+    else:
+        feedback_parts.append("Patient history not reviewed — prior cardiac workup relevant.")
+    investigation_steps = sum(1 for a in action_sequence if a in ("lookup_guideline", "get_patient_history", "check_formulary"))
+    if investigation_steps >= 2:
+        process_score += 0.03
+    breakdown["process_quality"] = round(min(0.15, process_score), 4)
+
+    # Penalties
+    if repeated_actions > 0:
+        penalty = min(0.2, repeated_actions * 0.1)
+        breakdown["penalties"] -= penalty
+        feedback_parts.append(f"Penalty: {repeated_actions} repeated action(s) (-{penalty:.2f}).")
+
+    total = _normalize(sum(breakdown.values()))
+    return {
+        "score": round(total, 4),
+        "breakdown": {k: round(v, 4) for k, v in breakdown.items()},
+        "feedback": " ".join(feedback_parts),
+    }
+
+
+def grade_hard_gene(
+    actions_taken: List[Dict[str, Any]],
+    ground_truth: Dict[str, Any],
+    max_steps: int = 8,
+) -> Dict[str, Any]:
+    """Grade hard_gene_therapy — deny due to elevated transaminases (active hepatic disease).
+
+    Scoring (strict):
+      - Contraindication found (0.25): must cite ALT elevation and hepatic criterion
+      - Guideline identification (0.15): must cite GL-GENE-THERAPY-001
+      - Correct denial code (0.15): SAFETY_CONCERN exact; alternatives partial
+      - Decision correctness (0.15): deny
+      - Rationale quality (0.15): must cite guideline, hepatic finding, and why
+      - Process quality (0.15): lookup guideline + patient history + decide
+    """
+    breakdown: Dict[str, float] = {
+        "contraindication_found": 0.0,
+        "guideline_identification": 0.0,
+        "denial_code_quality": 0.0,
+        "decision_correctness": 0.0,
+        "rationale_quality": 0.0,
+        "process_quality": 0.0,
+        "penalties": 0.0,
+    }
+    feedback_parts: List[str] = []
+
+    terminal_action = None
+    guideline_looked_up = False
+    patient_history_checked = False
+    repeated_actions = 0
+    seen_actions: List[str] = []
+    action_sequence: List[str] = []
+
+    for act in actions_taken:
+        act_type = act.get("action_type", "")
+        act_key = f"{act_type}:{act.get('payload', {})}"
+        if act_key in seen_actions:
+            repeated_actions += 1
+        seen_actions.append(act_key)
+        action_sequence.append(act_type)
+        if act_type == "lookup_guideline":
+            guideline_looked_up = True
+        if act_type == "get_patient_history":
+            patient_history_checked = True
+        if act_type in ("approve", "deny"):
+            terminal_action = act
+            break
+
+    if terminal_action is None:
+        feedback_parts.append("No terminal decision was made.")
+        return {"score": 0.01, "breakdown": breakdown, "feedback": " ".join(feedback_parts)}
+
+    rationale = (terminal_action.get("rationale") or "").lower()
+    all_action_text = " ".join(
+        (a.get("rationale") or "") + " " + str(a.get("payload", {}))
+        for a in actions_taken
+    ).lower()
+    combined_text = rationale + " " + all_action_text
+
+    # Decision correctness (0.15)
+    if terminal_action["action_type"] == ground_truth["correct_decision"]:
+        breakdown["decision_correctness"] = 0.15
+        feedback_parts.append("Correct decision: denied.")
+    else:
+        feedback_parts.append(
+            "CRITICAL: Wrong decision — should have denied (elevated transaminases = active hepatic disease)."
+        )
+        breakdown["penalties"] -= 0.1
+
+    # Contraindication found (0.25): elevated ALT/AST → active hepatic disease
+    has_alt_value = any(v in combined_text for v in ["alt", "85", "alt 85"])
+    has_ast_value = any(v in combined_text for v in ["ast", "72", "transaminase"])
+    has_elevation_concept = any(v in combined_text for v in ["elevated", "elevation", "upper limit", "abnormal", "above normal"])
+    has_hepatic_concept = any(v in combined_text for v in ["hepatic", "liver", "hepatotoxic", "hepatology"])
+    has_contra_word = any(v in combined_text for v in ["contraindication", "contraindicated"])
+
+    if has_alt_value and has_elevation_concept and has_hepatic_concept:
+        breakdown["contraindication_found"] = 0.25
+        feedback_parts.append("Correctly identified contraindication: ALT 85 U/L (elevated) → active hepatic disease.")
+    elif (has_alt_value or has_ast_value) and (has_hepatic_concept or has_contra_word):
+        breakdown["contraindication_found"] = 0.15
+        feedback_parts.append("Partially identified hepatic contraindication — missing specific lab values or criterion.")
+    elif has_alt_value or has_hepatic_concept:
+        breakdown["contraindication_found"] = 0.08
+        feedback_parts.append("Vaguely referenced liver/ALT but did not connect to GL-GENE-THERAPY-001 criterion.")
+    else:
+        feedback_parts.append("FAILED to identify contraindication: ALT 85 U/L (>45 normal) = active hepatic disease.")
+
+    # Guideline identification (0.15)
+    correct_gl = ground_truth["applicable_guideline"].lower()
+    if correct_gl in combined_text:
+        if correct_gl in rationale:
+            breakdown["guideline_identification"] = 0.15
+            feedback_parts.append(f"Correctly cited {ground_truth['applicable_guideline']} in rationale.")
+        else:
+            breakdown["guideline_identification"] = 0.08
+            feedback_parts.append(f"Referenced {ground_truth['applicable_guideline']} but not in final rationale.")
+    else:
+        feedback_parts.append(f"Did not cite {ground_truth['applicable_guideline']} — $2.1M drug requires explicit criteria review.")
+
+    # Denial code quality (0.15)
+    denial_payload = terminal_action.get("payload", {})
+    agent_denial_code = (
+        denial_payload.get("reason_code", "") or denial_payload.get("denial_code", "")
+    ).upper()
+    correct_code = ground_truth["correct_denial_code"]
+    alt_codes = [c.upper() for c in ground_truth.get("alternative_denial_codes", [])]
+
+    if agent_denial_code == correct_code:
+        breakdown["denial_code_quality"] = 0.15
+        feedback_parts.append(f"Correct denial reason code: {correct_code}.")
+    elif agent_denial_code in alt_codes:
+        breakdown["denial_code_quality"] = 0.07
+        feedback_parts.append(f"Acceptable denial code: {agent_denial_code} (best: {correct_code}).")
+    elif terminal_action["action_type"] == "deny" and agent_denial_code:
+        breakdown["denial_code_quality"] = 0.03
+        feedback_parts.append(f"Denial code '{agent_denial_code}' is not ideal for this case.")
+    else:
+        breakdown["denial_code_quality"] = 0.0
+        feedback_parts.append("Denied but provided no reason code.")
+
+    # Rationale quality (0.15)
+    rationale_score = _check_rationale_references(
+        terminal_action.get("rationale"), ground_truth["key_findings"], ground_truth["applicable_guideline"]
+    )
+    breakdown["rationale_quality"] = round(0.15 * rationale_score, 4)
+    if rationale_score >= 0.6:
+        feedback_parts.append("Strong rationale citing guideline and hepatic contraindication.")
+    elif rationale_score >= 0.3:
+        feedback_parts.append("Rationale partially addresses the gene therapy risk.")
+    else:
+        feedback_parts.append("Rationale insufficient — must cite guideline, ALT elevation, and hepatic criterion.")
+
+    # Process quality (0.15)
+    process_score = 0.0
+    if guideline_looked_up:
+        process_score += 0.06
+    else:
+        feedback_parts.append("Guideline not consulted — required for $2.1M gene therapy review.")
+    if patient_history_checked:
+        process_score += 0.06
+    else:
+        feedback_parts.append("Patient history not reviewed — nusinersen history and liver workup are relevant.")
+    investigation_steps = sum(1 for a in action_sequence if a in ("lookup_guideline", "get_patient_history", "check_formulary"))
+    if investigation_steps >= 2:
+        process_score += 0.03
+    breakdown["process_quality"] = round(min(0.15, process_score), 4)
+
+    # Penalties
+    if repeated_actions > 0:
+        penalty = min(0.2, repeated_actions * 0.1)
+        breakdown["penalties"] -= penalty
+        feedback_parts.append(f"Penalty: {repeated_actions} repeated action(s) (-{penalty:.2f}).")
+
+    total = _normalize(sum(breakdown.values()))
+    return {
+        "score": round(total, 4),
+        "breakdown": {k: round(v, 4) for k, v in breakdown.items()},
+        "feedback": " ".join(feedback_parts),
+    }
+
+
 GRADERS = {
     "easy_knee_mri": grade_easy,
+    "easy_chest_xray": grade_easy,
+    "easy_pt_eval": grade_easy,
     "medium_humira": grade_medium,
+    "medium_ozempic": grade_medium,
+    "medium_sleep_study": grade_easy,
     "hard_spinal_fusion": grade_hard,
+    "hard_cardiac_cath": grade_hard_cardiac,
+    "hard_gene_therapy": grade_hard_gene,
 }
 
 
@@ -554,4 +918,5 @@ def grade_task(
     """Grade a task given the actions taken and ground truth."""
     if task_id not in GRADERS:
         raise ValueError(f"Unknown task_id: {task_id}. Available: {list(GRADERS.keys())}")
-    return GRADERS[task_id](actions_taken, ground_truth, max_steps)
+    normalized_gt = _normalize_ground_truth(ground_truth)
+    return GRADERS[task_id](actions_taken, normalized_gt, max_steps)

@@ -12,10 +12,7 @@ from typing import Any, Dict, Optional
 from models import PAAction, PAObservation, PAState
 from server.environment import MedPAEnvironment
 
-try:
-    from openenv.core.env_server.http_server import create_app
-except ImportError:
-    from openenv.core.env_server.http_server import create_app
+from openenv.core.env_server.http_server import create_app
 
 # create_app gives us /ws, /health, /schema, /metadata, /mcp + stateless /reset, /step, /state
 app = create_app(MedPAEnvironment, PAAction, PAObservation, env_name="med_pa", max_concurrent_envs=4)
