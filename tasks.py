@@ -426,7 +426,7 @@ TASKS = {
     "medium_ozempic": {
         "request": {
             "request_id": "PA-2024-006",
-            "patient": {"age": 48, "gender": "M", "plan_id": "PPO-500"},
+            "patient": {"age": 48, "gender": "M", "plan_id": "PPO-600"},
             "diagnosis": ["E11.65", "E66.01"],
             "procedure": "J3490",
             "clinical_notes": (
@@ -498,7 +498,7 @@ TASKS = {
     "medium_sleep_study": {
         "request": {
             "request_id": "PA-2024-007",
-            "patient": {"age": 41, "gender": "F", "plan_id": "HMO-250"},
+            "patient": {"age": 41, "gender": "F", "plan_id": "HMO-300"},
             "diagnosis": ["G47.33"],
             "procedure": "95810",
             "clinical_notes": (
@@ -645,7 +645,7 @@ TASKS = {
     "hard_cardiac_cath": {
         "request": {
             "request_id": "PA-2024-008",
-            "patient": {"age": 67, "gender": "M", "plan_id": "PPO-1000"},
+            "patient": {"age": 67, "gender": "M", "plan_id": "PPO-1500"},
             "diagnosis": ["I25.10", "I20.0"],
             "procedure": "93458",
             "clinical_notes": (
@@ -773,8 +773,8 @@ TASKS = {
                 "SMN1 deletion confirmed",
             ],
             "alternative_denial_codes": [
-                "SAFETY_CONCERN",
                 "CONTRAINDICATION_HEPATOTOXICITY_RISK",
+                "CRITERIA_NOT_MET",
             ],
         },
         "patient_history": {
@@ -797,12 +797,25 @@ PATIENT_HISTORIES = {
         ],
         "chronic_conditions": ["hypertension"],
     },
+    "PPO-600": {
+        "prior_authorizations": [
+            {"request_id": "PA-2022-031", "procedure": "83036", "decision": "approve", "date": "2022-11-10"},
+            {"request_id": "PA-2023-055", "procedure": "J3490", "decision": "deny", "date": "2023-06-01"},
+        ],
+        "chronic_conditions": ["type_2_diabetes", "obesity", "hypertension"],
+    },
     "HMO-250": {
         "prior_authorizations": [
             {"request_id": "PA-2023-112", "procedure": "43239", "decision": "approve", "date": "2023-05-20"},
             {"request_id": "PA-2024-001", "procedure": "J0135", "decision": "pending", "date": "2024-01-10"},
         ],
         "chronic_conditions": ["crohns_disease", "iron_deficiency_anemia"],
+    },
+    "HMO-300": {
+        "prior_authorizations": [
+            {"request_id": "PA-2023-088", "procedure": "95806", "decision": "approve", "date": "2023-07-14"},
+        ],
+        "chronic_conditions": ["atrial_fibrillation", "copd", "obstructive_sleep_apnea"],
     },
     "PPO-1000": {
         "prior_authorizations": [
@@ -811,6 +824,13 @@ PATIENT_HISTORIES = {
             {"request_id": "PA-2023-105", "procedure": "62322", "decision": "approve", "date": "2023-09-04"},
         ],
         "chronic_conditions": ["lumbar_spondylosis", "chronic_low_back_pain", "hypertension", "obesity", "type_2_diabetes"],
+    },
+    "PPO-1500": {
+        "prior_authorizations": [
+            {"request_id": "PA-2022-067", "procedure": "93454", "decision": "approve", "date": "2022-09-05"},
+            {"request_id": "PA-2023-140", "procedure": "93458", "decision": "deny", "date": "2023-12-20"},
+        ],
+        "chronic_conditions": ["coronary_artery_disease", "chronic_kidney_disease_stage4", "hypertension", "type_2_diabetes"],
     },
     "HMO-100": {
         "prior_authorizations": [],

@@ -166,7 +166,11 @@ async def run_task(client: OpenAI, env: MedPAEnv, task_name: str) -> float:
             action_dict = parse_action(llm_text)
             action_type = action_dict.get("action_type", "unknown")
 
-            action = PAAction(**action_dict)
+            try:
+                action = PAAction(**action_dict)
+            except Exception:
+                action_dict = {"action_type": "lookup_guideline", "payload": {"procedure": "unknown"}, "rationale": "fallback"}
+                action = PAAction(**action_dict)
             result = await env.step(action)
             obs = result.observation
 
@@ -203,7 +207,7 @@ async def run_task_with_timeout(client: OpenAI, env: MedPAEnv, task_name: str) -
         return await asyncio.wait_for(run_task(client, env, task_name), timeout=90)
     except asyncio.TimeoutError:
         print(f"[DEBUG] Task {task_name} timed out (90s)", flush=True)
-        log_end(success=False, steps=0, score=0.01, rewards=[])
+        # run_task.finally already emitted [END]; do NOT call log_end again
         return 0.01
 
 
@@ -222,7 +226,7 @@ async def main() -> None:
             s = await run_task_with_timeout(client, env, task)
             scores.append(s)
         avg = sum(scores) / len(scores) if scores else 0.0
-        print(f"\n[SUMMARY] avg_score={avg:.3f} scores={','.join(f'{s:.3f}' for s in scores)}", flush=True)
+        print(f"[DEBUG] avg_score={avg:.3f} scores={','.join(f'{s:.3f}' for s in scores)}", flush=True)
     finally:
         try:
             await env.close()
