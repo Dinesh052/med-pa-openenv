@@ -15,7 +15,7 @@ from server.environment import MedPAEnvironment
 from openenv.core.env_server.http_server import create_app
 
 # create_app gives us /ws, /health, /schema, /metadata, /mcp + stateless /reset, /step, /state
-app = create_app(MedPAEnvironment, PAAction, PAObservation, env_name="med_pa", max_concurrent_envs=4)
+app = create_app(MedPAEnvironment, PAAction, PAObservation, env_name="med_pa", max_concurrent_envs=1)
 
 
 @app.get("/")
