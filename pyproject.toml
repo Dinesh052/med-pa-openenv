@@ -14,10 +14,11 @@ dependencies = [
     "pydantic>=2.0.0",
     "requests>=2.25.0",
     "openai>=1.0.0",
+    "httpx>=0.25.0",
 ]
 
 [project.scripts]
 server = "server.app:main"
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "httpx>=0.25.0"]

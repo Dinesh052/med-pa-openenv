@@ -4,6 +4,20 @@ type: space
 runtime: fastapi
 app: server.app:app
 port: 8000
+version: "1.0.0"
+description: >
+  Simulates insurance prior authorization review. An agent reviews PA
+  requests against clinical guidelines and makes approve/deny/request_info
+  decisions. Models the $50B+ US healthcare administrative burden.
+  Tasks range from straightforward approvals to denial cases with buried
+  contraindications in dense clinical notes.
+author: Dinesh052
+tags:
+  - openenv
+  - healthcare
+  - prior-authorization
+  - agentic
+  - reinforcement-learning
 tasks:
   - easy_knee_mri
   - easy_chest_xray
@@ -14,3 +28,7 @@ tasks:
   - hard_spinal_fusion
   - hard_cardiac_cath
   - hard_gene_therapy
+difficulty_levels:
+  - easy
+  - medium
+  - hard

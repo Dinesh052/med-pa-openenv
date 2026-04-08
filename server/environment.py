@@ -79,14 +79,15 @@ class MedPAEnvironment(Environment):
 
         self._state.step_count += 1
         self._state.current_step += 1
-        self._state.actions_taken.append(pa.action_type)
 
-        self._actions_taken.append({
+        action_record = {
             "action_type": pa.action_type,
             "payload": pa.payload,
             "rationale": pa.rationale,
             "step": self._state.current_step,
-        })
+        }
+        self._state.actions_taken.append(action_record)
+        self._actions_taken.append(action_record)
 
         req = self._task_data["request"]
         step_num = self._state.current_step

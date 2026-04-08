@@ -850,3 +850,51 @@ PATIENT_HISTORIES = {
         "chronic_conditions": ["spinal_muscular_atrophy"],
     },
 }
+
+
+# ---------------------------------------------------------------------------
+# Task randomization for RL training viability
+# ---------------------------------------------------------------------------
+import random
+import copy
+
+
+def get_randomized_task(task_id: str, seed: int | None = None) -> dict:
+    """Return a copy of the task with minor numeric variations.
+
+    Ground truth decision is always preserved. Variations stay within ranges
+    that do not change the correct decision.
+    """
+    rng = random.Random(seed)
+    task = copy.deepcopy(TASKS[task_id])
+
+    if task_id == "easy_knee_mri":
+        age = rng.randint(38, 55)
+        weeks = rng.randint(5, 8)
+        task["request"]["patient"]["age"] = age
+        task["request"]["clinical_notes"] = task["request"]["clinical_notes"].replace(
+            "45-year-old", f"{age}-year-old"
+        ).replace("six weeks ago", f"{weeks} weeks ago")
+
+    elif task_id == "hard_spinal_fusion":
+        # HbA1c 8.1–8.9 → always above 8.0 threshold → always DENY
+        hba1c = round(rng.uniform(8.1, 8.9), 1)
+        task["request"]["clinical_notes"] = task["request"]["clinical_notes"].replace(
+            "8.4%", f"{hba1c}%"
+        )
+
+    elif task_id == "medium_humira":
+        # CDAI 260–320 → always moderate-to-severe
+        cdai = rng.randint(260, 320)
+        task["request"]["clinical_notes"] = task["request"]["clinical_notes"].replace(
+            "CDAI score is 285", f"CDAI score is {cdai}"
+        )
+
+    elif task_id == "hard_cardiac_cath":
+        # eGFR 15–27 → always below 30 threshold → always DENY
+        egfr = rng.randint(15, 27)
+        task["request"]["clinical_notes"] = task["request"]["clinical_notes"].replace(
+            "eGFR 22 mL/min", f"eGFR {egfr} mL/min"
+        )
+
+    return task

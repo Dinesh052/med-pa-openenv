@@ -90,4 +90,11 @@ class PAState(State):
     step_count: int = 0
     current_step: int = 0
     max_steps: int = 8
-    actions_taken: List[str] = []
+    actions_taken: List[Dict[str, Any]] = []
+
+    def is_duplicate_action(self, action_type: str, payload: dict) -> bool:
+        """Check if this exact (action_type, payload) was already taken."""
+        for prev in self.actions_taken:
+            if prev.get("action_type") == action_type and prev.get("payload") == payload:
+                return True
+        return False
